@@ -544,7 +544,7 @@ function nearbyText(){
 }
 
 /* ---------- 地图 ---------- */
-let map = null, meDot = null, meRing = null, placeLayer = null, selected = "", followed = false;
+var map = null, meDot = null, meRing = null, placeLayer = null, selected = "", followed = false;
 function initMap(lat, lon){
   if (map || !window.L) { if (!window.L) $("mapWrap").classList.add("hide"); return; }
   map = L.map("map", { zoomControl: false, attributionControl: true }).setView([lat, lon], 17);
