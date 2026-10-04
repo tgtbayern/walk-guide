@@ -72,6 +72,12 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
 .pin.on span{background:var(--star);color:#fff}
 .cam{margin-top:22px;padding-top:16px;border-top:2px solid var(--line)}
 .cam-title{margin:0 0 4px;font-weight:700}
+.tray{display:flex;gap:10px;overflow-x:auto;padding:12px 2px 4px}
+.shot{position:relative;flex:none;width:76px;height:76px;border-radius:10px;overflow:visible;border:2px solid var(--line);background:#000;cursor:pointer;padding:0}
+.shot img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
+.shot .no{position:absolute;left:4px;top:4px;min-width:20px;height:20px;border-radius:10px;background:rgba(0,0,0,.65);color:#fff;font:700 12px/20px var(--latin);text-align:center}
+.shot .cropped{position:absolute;left:4px;bottom:4px;padding:0 6px;border-radius:8px;background:var(--sky);color:#fff;font:600 11px/18px var(--cjk)}
+.shot .x{position:absolute;right:-8px;top:-8px;width:24px;height:24px;border-radius:50%;border:0;background:var(--star);color:#fff;font:700 14px/24px var(--latin);cursor:pointer;padding:0}
 .crop-wrap{margin-top:10px;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:#000;line-height:0}
 #cropCanvas{width:100%;touch-action:none;cursor:crosshair}
 .player{position:fixed;left:0;right:0;bottom:0;z-index:1200;display:flex;align-items:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--paper);border-top:2px solid var(--line);box-shadow:0 -2px 12px rgba(0,0,0,.08)}
@@ -163,22 +169,31 @@ body.has-player .wrap{padding-bottom:110px}
     </div>
 
     <section class="cam">
-      <p class="cam-title">展板翻译</p>
-      <p class="hint">拍下博物馆墙上的说明文字，翻译成中文并朗读。</p>
+      <p class="cam-title">展板讲解</p>
+      <p class="hint">拍下一张或几张展板，整理成一段连贯的中文讲解并朗读。可以连续拍好几张再一起讲。</p>
       <div class="row">
-        <button class="ghost" id="camBtn" type="button">📷 拍照翻译</button>
-        <button class="ghost" id="albumBtn" type="button">从相册选</button>
+        <button class="ghost" id="camBtn" type="button">📷 拍一张</button>
+        <button class="ghost" id="albumBtn" type="button">从相册选（可多选）</button>
       </div>
       <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
-      <input type="file" id="albumInput" accept="image/*" hidden>
+      <input type="file" id="albumInput" accept="image/*" multiple hidden>
+      <div id="trayBox" class="hide">
+        <div class="tray" id="tray"></div>
+        <p class="hint" id="trayHint"></p>
+        <div class="row">
+          <button class="ghost" id="trayClear" type="button">清空</button>
+          <button class="ghost" id="trayMore" type="button">再拍一张</button>
+        </div>
+        <button class="main-btn" id="cropGo" type="button">讲解这些照片</button>
+      </div>
       <div id="cropBox" class="hide">
-        <p class="hint">手指拖动框选要翻译的部分；不框选就自动找出说明文字。</p>
+        <p class="hint">手指拖动框选要讲的部分；不框选就自动找出说明文字。</p>
         <div class="crop-wrap"><canvas id="cropCanvas"></canvas></div>
         <div class="row">
           <button class="ghost" id="cropClear" type="button">清除选区</button>
-          <button class="ghost" id="cropRetake" type="button">重拍</button>
+          <button class="ghost" id="cropDelete" type="button">删除这张</button>
         </div>
-        <button class="main-btn" id="cropGo" type="button">确定，翻译</button>
+        <button class="main-btn" id="cropDone" type="button">完成</button>
       </div>
     </section>
 
@@ -502,20 +517,28 @@ function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，400 字以内。`;
 }
 
-function photoPrompt(b64){
-  return [
-    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
-    { type: "text", text: [
-      "这是游客在博物馆或展览里拍的墙上说明文字（展板、展签、标牌）。",
-      "找出其中的说明文字（标题、正文、展品信息），忽略画面里无关的东西，把它完整翻译成自然流畅的中文。",
-      "格式：",
-      "- 有标题的话，第一行写「## 中文标题（原文标题）」。",
-      "- 正文按原来的段落逐段翻译，每段一行，不要加符号。",
-      "- 人名、地名、作品名第一次出现时，中文后面用括号附原文。",
-      "- 展品信息（作者、年代、材质、尺寸、来源、藏品编号等）放在最后，每项一行，以「- 」开头。",
-      "只输出译文本身：不要输出原文，不要解释，不要说「这张图片」「这块展板」之类的话，不要加粗。看不清的部分直接跳过，不要猜。",
-    ].join("\n") },
-  ];
+function photoPrompt(list){
+  const n = list.length, many = n > 1, content = [];
+  list.forEach((b64, i) => {
+    if (many) content.push({ type: "text", text: `照片 ${i + 1}：` });
+    content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } });
+  });
+  content.push({ type: "text", text: [
+    many ? `上面是游客在博物馆里依次拍下的 ${n} 张展板或展签照片（按拍摄顺序）。` : "上面是游客在博物馆里拍下的一张展板或展签照片。",
+    "请把照片上的说明文字改写成一篇给耳朵听的中文讲解稿，它会直接用语音读给游客听。",
+    many
+      ? "把所有照片的内容串成一个整体：开头用一两句交代这组内容的主题或展览背景；然后按最自然的顺序讲（不一定是拍摄顺序），段与段之间用过渡句衔接，点出它们之间的联系，比如同一位艺术家、同一时代、前因后果或前后对比；重复出现的内容只讲一次。"
+      : "开头一句点明这是什么（哪件展品或哪个主题），再展开讲。",
+    "改写原则：",
+    "- 忠于原文的事实，不要编造；可以补一两句公认的背景帮助理解，但不能喧宾夺主。",
+    "- 不要逐字翻译。用短句和口语，像讲解员在耳边说话。",
+    "- 只适合看、不适合听的内容要转化：藏品编号、登记号、图片版权、精确尺寸直接省略；捐赠来源、收藏信息最多一句带过；年代和数字改成顺口的说法（比如「1884 年到 1886 年」「两米多宽」）；缩写和符号展开说；清单改成连贯的句子。",
+    "- 人名、作品名第一次出现时用中文译名，后面括号附原文（括号里的原文不会被读出来）。",
+    "格式：每件展品或每个主题用一行「## 中文小标题」开头，下面是自然段，每段一行；不要用列表符号，不要加粗。",
+    "只输出讲解稿本身，不要说「这张照片」「这块展板」「照片 1」之类的话。看不清的部分直接跳过，不要猜。",
+    `长度：每张照片对应的内容控制在 250 字以内${many ? "，整体紧凑不重复" : ""}。`,
+  ].join("\n") });
+  return content;
 }
 
 /* ---------- 渲染 ---------- */
@@ -688,7 +711,7 @@ async function streamClaude(prompt, onText, signal){
       "anthropic-dangerous-direct-browser-access": "true",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ model: MODEL, max_tokens: 4000, thinking: { type: "between_tools" }, stream: true, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 6000, thinking: { type: "between_tools" }, stream: true, messages: [{ role: "user", content: prompt }] }),
   });
   if (!res.ok) {
     let msg = ""; try { msg = (await res.json()).error?.message || ""; } catch (_) {}
@@ -751,7 +774,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     await gatherNearby();
   }
 
-  $("story").innerHTML = `${question ? `<p class="q">你问：${esc(question)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}${photo ? "正在识别和翻译…" : "正在想…"}</p>`;
+  $("story").innerHTML = `${question ? `<p class="q">你问：${esc(question)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}${photo ? "正在看照片、整理讲解…" : "正在想…"}</p>`;
   $("stopRow").classList.remove("hide");
   ctl = new AbortController();
 
@@ -870,67 +893,102 @@ const ask = () => { const q = $("question").value.trim(); if (!q) return; $("que
 $("askBtn").onclick = ask;
 $("question").addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
 
-/* ---------- 展板翻译：拍照 → 框选 → 翻译 ---------- */
-let camImg = null, sel = null, dragFrom = null;
-function openPhoto(file){
-  if (!file) return;
-  const img = new Image();
-  img.onload = () => { camImg = img; sel = null; $("cropBox").classList.remove("hide"); drawCrop(); $("cropBox").scrollIntoView({ behavior: "smooth", block: "start" }); };
-  img.src = URL.createObjectURL(file);
+/* ---------- 展板讲解：拍多张 → 可选框选 → 一起讲 ---------- */
+const MAX_SHOTS = 8;
+let shots = [], editing = -1, dragFrom = null;   // shots: [{img, url, sel}]
+function addFiles(files){
+  for (const f of files) {
+    if (shots.length >= MAX_SHOTS) { $("trayHint").textContent = `一次最多 ${MAX_SHOTS} 张，先讲完这些再继续拍。`; break; }
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = renderTray; img.src = url;
+    shots.push({ img, url, sel: null });
+  }
+  renderTray();
+  $("trayBox").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
+function renderTray(){
+  $("trayBox").classList.toggle("hide", !shots.length);
+  const tray = $("tray"); tray.innerHTML = "";
+  shots.forEach((sh, i) => {
+    const b = document.createElement("div");
+    b.className = "shot"; b.setAttribute("role", "button"); b.setAttribute("aria-label", `第 ${i + 1} 张，点开框选`);
+    b.innerHTML = `<img src="${sh.url}" alt=""><span class="no">${i + 1}</span>${sh.sel ? '<span class="cropped">已框选</span>' : ""}<button class="x" type="button" aria-label="删除第 ${i + 1} 张">×</button>`;
+    b.onclick = () => openEditor(i);
+    b.querySelector(".x").onclick = e => { e.stopPropagation(); removeShot(i); };
+    tray.appendChild(b);
+  });
+  if (shots.length) {
+    $("cropGo").textContent = shots.length > 1 ? `串起来讲这 ${shots.length} 张` : "讲解这张";
+    if (shots.length < MAX_SHOTS) $("trayHint").textContent = "点缩略图可以框选要讲的部分；不框选就自动找文字。";
+  }
+}
+function removeShot(i){
+  URL.revokeObjectURL(shots[i].url); shots.splice(i, 1);
+  if (editing === i) closeEditor(); else if (editing > i) editing--;
+  renderTray();
+}
+function openEditor(i){ editing = i; $("cropBox").classList.remove("hide"); drawCrop(); $("cropBox").scrollIntoView({ behavior: "smooth", block: "start" }); }
+function closeEditor(){ editing = -1; $("cropBox").classList.add("hide"); renderTray(); }
+function curShot(){ return editing >= 0 ? shots[editing] : null; }
 function drawCrop(){
-  if (!camImg) return;
+  const sh = curShot(); if (!sh || !sh.img.naturalWidth) return;
+  const img = sh.img, sel = sh.sel;
   const c = $("cropCanvas"), w = c.clientWidth || 340, dpr = window.devicePixelRatio || 1;
-  const h = Math.round(w * camImg.naturalHeight / camImg.naturalWidth);
+  const h = Math.round(w * img.naturalHeight / img.naturalWidth);
   c.width = w * dpr; c.height = h * dpr; c.style.height = h + "px";
-  const g = c.getContext("2d"), k = c.width / camImg.naturalWidth;
-  g.drawImage(camImg, 0, 0, c.width, c.height);
+  const g = c.getContext("2d"), k = c.width / img.naturalWidth;
+  g.drawImage(img, 0, 0, c.width, c.height);
   if (sel) {
-    const [x, y, sw, sh] = [sel.x * k, sel.y * k, sel.w * k, sel.h * k];
+    const [x, y, sw, shh] = [sel.x * k, sel.y * k, sel.w * k, sel.h * k];
     g.fillStyle = "rgba(0,0,0,.55)";
-    g.fillRect(0, 0, c.width, y); g.fillRect(0, y + sh, c.width, c.height - y - sh);
-    g.fillRect(0, y, x, sh); g.fillRect(x + sw, y, c.width - x - sw, sh);
-    g.strokeStyle = "#41B6E6"; g.lineWidth = 3 * dpr; g.strokeRect(x, y, sw, sh);
+    g.fillRect(0, 0, c.width, y); g.fillRect(0, y + shh, c.width, c.height - y - shh);
+    g.fillRect(0, y, x, shh); g.fillRect(x + sw, y, c.width - x - sw, shh);
+    g.strokeStyle = "#41B6E6"; g.lineWidth = 3 * dpr; g.strokeRect(x, y, sw, shh);
   }
 }
 function toImgXY(e){
-  const c = $("cropCanvas"), r = c.getBoundingClientRect(), k = camImg.naturalWidth / r.width;
-  return { x: Math.max(0, Math.min(camImg.naturalWidth, (e.clientX - r.left) * k)), y: Math.max(0, Math.min(camImg.naturalHeight, (e.clientY - r.top) * k)) };
+  const img = curShot().img, r = $("cropCanvas").getBoundingClientRect(), k = img.naturalWidth / r.width;
+  return { x: Math.max(0, Math.min(img.naturalWidth, (e.clientX - r.left) * k)), y: Math.max(0, Math.min(img.naturalHeight, (e.clientY - r.top) * k)) };
 }
-$("cropCanvas").addEventListener("pointerdown", e => { if (!camImg) return; e.preventDefault(); $("cropCanvas").setPointerCapture(e.pointerId); dragFrom = toImgXY(e); });
+$("cropCanvas").addEventListener("pointerdown", e => { if (!curShot()) return; e.preventDefault(); $("cropCanvas").setPointerCapture(e.pointerId); dragFrom = toImgXY(e); });
 $("cropCanvas").addEventListener("pointermove", e => {
   if (!dragFrom) return;
   const p = toImgXY(e);
-  sel = { x: Math.min(dragFrom.x, p.x), y: Math.min(dragFrom.y, p.y), w: Math.abs(p.x - dragFrom.x), h: Math.abs(p.y - dragFrom.y) };
+  curShot().sel = { x: Math.min(dragFrom.x, p.x), y: Math.min(dragFrom.y, p.y), w: Math.abs(p.x - dragFrom.x), h: Math.abs(p.y - dragFrom.y) };
   drawCrop();
 });
 $("cropCanvas").addEventListener("pointerup", () => {
   dragFrom = null;
-  if (sel && (sel.w < camImg.naturalWidth * 0.04 || sel.h < camImg.naturalHeight * 0.03)) { sel = null; drawCrop(); }   // 太小当作误触
+  const sh = curShot(); if (!sh || !sh.sel) return;
+  if (sh.sel.w < sh.img.naturalWidth * 0.04 || sh.sel.h < sh.img.naturalHeight * 0.03) { sh.sel = null; drawCrop(); }   // 太小当作误触
 });
 window.addEventListener("resize", drawCrop);
-function photoBase64(){
-  const src = sel || { x: 0, y: 0, w: camImg.naturalWidth, h: camImg.naturalHeight };
+function shotBase64(sh){
+  const img = sh.img, src = sh.sel || { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
   const scale = Math.min(1, 1568 / Math.max(src.w, src.h));   // 压到长边 1568 像素，识别够用、上传更快
   const c = document.createElement("canvas");
   c.width = Math.round(src.w * scale); c.height = Math.round(src.h * scale);
-  c.getContext("2d").drawImage(camImg, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
+  c.getContext("2d").drawImage(img, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.85).split(",")[1];
 }
 $("camBtn").onclick = () => { unlockAudio(); $("camInput").value = ""; $("camInput").click(); };
+$("trayMore").onclick = () => $("camBtn").click();
 $("albumBtn").onclick = () => { unlockAudio(); $("albumInput").value = ""; $("albumInput").click(); };
-$("camInput").onchange = e => openPhoto(e.target.files[0]);
-$("albumInput").onchange = e => openPhoto(e.target.files[0]);
-$("cropClear").onclick = () => { sel = null; drawCrop(); };
-$("cropRetake").onclick = () => $("camBtn").click();
+$("camInput").onchange = e => addFiles([...e.target.files]);
+$("albumInput").onchange = e => addFiles([...e.target.files]);
+$("cropClear").onclick = () => { const sh = curShot(); if (sh) { sh.sel = null; drawCrop(); } };
+$("cropDelete").onclick = () => { if (editing >= 0) removeShot(editing); };
+$("cropDone").onclick = () => closeEditor();
+$("trayClear").onclick = () => { shots.forEach(sh => URL.revokeObjectURL(sh.url)); shots = []; closeEditor(); };
 $("cropGo").onclick = async () => {
-  if (!camImg) return;
+  const ready = shots.filter(sh => sh.img.naturalWidth);
+  if (!ready.length) return;
   unlockAudio();
-  const b64 = photoBase64();
-  $("cropBox").classList.add("hide");
+  const list = ready.map(shotBase64);
+  closeEditor();
   if (busy) { ctl?.abort(); resetSpeech(); for (let i = 0; i < 30 && busy; i++) await new Promise(r => setTimeout(r, 100)); }
   $("story").scrollIntoView({ behavior: "smooth", block: "start" });
-  run({ photo: b64 });
+  run({ photo: list });
 };
 
 /* ---------- 朗读控制条 ---------- */
