@@ -228,8 +228,10 @@ body.has-player .wrap{padding-bottom:110px}
       <label class="lbl" for="note">补充说明（写一句你看到的东西，定位会准很多）</label>
       <input class="field" id="note" type="text" placeholder="例如：我面前是一栋黑色玻璃高楼，右边是红色的桥">
       <div class="chips" id="chips">
-        <label class="chip"><input type="checkbox" value="建筑和设计师" checked><span>建筑</span></label>
-        <label class="chip"><input type="checkbox" value="历史" checked><span>历史</span></label>
+        <label class="chip"><input type="checkbox" value="历史事件和人物" checked><span>历史</span></label>
+        <label class="chip"><input type="checkbox" value="城市文化和习俗" checked><span>文化</span></label>
+        <label class="chip"><input type="checkbox" value="冷知识和意想不到的事实" checked><span>冷知识</span></label>
+        <label class="chip"><input type="checkbox" value="建筑和设计师"><span>建筑</span></label>
         <label class="chip"><input type="checkbox" value="美食"><span>美食</span></label>
         <label class="chip"><input type="checkbox" value="影视取景"><span>影视取景</span></label>
         <label class="chip"><input type="checkbox" value="拍照机位"><span>拍照机位</span></label>
@@ -416,7 +418,7 @@ async function fetchWiki(lat, lon){
     `&ggscoord=${lat}%7C${lon}&ggsradius=800&ggslimit=40&colimit=max&prop=coordinates%7Cdescription%7Cextracts%7Cpageimages` +
     "&exintro=1&explaintext=1&exsentences=4&exlimit=20&piprop=thumbnail&pithumbsize=160&pilimit=40";
   const j = await (await fetch(u)).json();
-  const junk = /area code|radio station|television station|tv station|crash|disaster|accident|fire of|massacre|riot|^street in|zip code|postal code/i;
+  const junk = /area code|radio station|television station|tv station|^street in|zip code|postal code/i;   // 历史事件保留，它们正是好话题
   return Object.values(j.query?.pages || {}).filter(p => p.coordinates && !junk.test(p.description || "") && !/^Area code/.test(p.title)).map(p => ({
     name: p.title, lat: p.coordinates[0].lat, lon: p.coordinates[0].lon, src: "维基百科",
     kind: p.description || "", info: (p.extract || "").replace(/\s+/g, " ").slice(0, 600),
@@ -540,19 +542,22 @@ function context(){
 const STYLE = [
   "讲解风格（严格遵守）：",
   "- 像一个懂行的朋友在耳边讲，信息密度高，有具体的人名、年份、数字、来龙去脉，不要空泛的形容词。",
-  "- 人名、建筑名第一次出现时，中文名后面用括号附英文原名，例如：丹尼尔·伯纳姆（Daniel Burnham）。",
-  "- 讲建筑时优先讲：原来叫什么、哪年建成、谁设计的、这位设计师还做过什么、后来经历了什么变迁（易主、空置、改造、花了多少钱、哪年以什么身份重新开业）、什么风格、外立面上游客能亲眼看到的细节。",
+  "- 人名、地名、作品名第一次出现时，中文名后面用括号附英文原名，例如：丹尼尔·伯纳姆（Daniel Burnham）。",
+  "- 选题不限于建筑：这里发生过的历史事件、名人轶事、城市文化和习俗、街名地名的由来、电影和流行文化、发明和「第一次」、美食起源、冷知识都可以讲。挑最让人意想不到、最值得跟朋友转述的角度。",
+  "- 建筑本身平平无奇就别硬讲它的建成年份和风格；只有它真有看点（名作、名人设计、背后有故事、外立面有值得看的细节）时才讲建筑，讲的时候也优先讲它背后的人和事。",
+  "- 每条要点都要有一个具体的「钩子」：一个反常识的事实、一个具体的人和他做过的事、一个数字带来的对比，或者一个至今还能亲眼看到的痕迹。",
   "- 只写你有把握的事实。不确定的数字宁可不写，也不要编。",
   "- 如果给了附近地点清单：只能从清单里挑要讲的地方，名称、方向和距离以清单为准，不要讲清单外的建筑；事实优先用清单里的资料，资料没写的内容只补充你非常确定的。方向和距离照清单写成大约。",
   "- 只讲真正的内容：不要提 GPS 误差，不要猜测或确认游客在哪，不要说“如果你看到……就对了”，不要请游客补充信息，不要客套和免责声明，直接从地点讲起。",
 ].join("\n");
 const FORMAT_TOUR = [
   "输出格式：",
-  "挑 1–2 个他身边最值得讲的地方（优先他眼前能看到的、最有故事的那栋楼）。每个地方先写一行「## 名称（方向，大约距离）」，下面写 3–4 条要点，每条以「- 」开头，每条 1–3 句话，像这个例子：",
+  "挑 1–2 个最有意思的话题。话题可以是一个地方、一段历史、一个人物或一个冷知识，但必须和他所在的位置有关。每个话题先写一行「## 标题（方向，大约距离）」；话题不对应某个具体地点时，括号里写它和这里的关系，比如（就在这条街上）。下面写 3–4 条要点，每条以「- 」开头，每条 1–3 句话。两个例子：",
+  "## 倒着流的芝加哥河（你北边，约 200 米）",
+  "- 这条河原本流进密歇根湖，把城市污水直接带进了全市的饮用水源。1900 年芝加哥挖通了卫生与航运运河（Sanitary and Ship Canal），让河水掉头，改为流出湖泊、一路流向密西西比河。",
+  "- 每年圣帕特里克节前后，河水会被染成翠绿色，这个传统从 1962 年延续到现在。",
   "## 芝加哥 JW 万豪酒店（你左手边，约 50 米）",
-  "- 这栋楼原本是大陆商业国民银行大楼（Continental & Commercial National Bank），1914 年建成，由丹尼尔·伯纳姆（Daniel Burnham）的事务所设计。伯纳姆就是做了 1909 年「芝加哥规划」的那位，名言是「不要做小计划」（Make no little plans）。",
-  "- 后来银行变迁、楼空置多年，开发商花了约 3.96 亿美元修复，2010 年以芝加哥第一家 JW 万豪开业，酒店占前 12 层，上面是公寓。",
-  "- 新古典主义风格，抬头看外立面的科林斯柱和希腊回纹装饰。",
+  "- 这栋楼原本是大陆商业国民银行大楼（Continental & Commercial National Bank），1914 年由丹尼尔·伯纳姆（Daniel Burnham）的事务所设计。伯纳姆就是做了 1909 年「芝加哥规划」的那位，名言是「不要做小计划」（Make no little plans）。",
   "不要用加粗，总长度 600 字以内。",
 ].join("\n");
 function tourPrompt(focus, picked){
