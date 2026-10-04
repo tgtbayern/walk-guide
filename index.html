@@ -156,6 +156,7 @@ body.has-player .wrap{padding-bottom:110px}
 .story{margin-top:16px}
 .turn+.turn{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
 .story .q{display:inline-block;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--mist);color:var(--ink)}
+textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
 .hide{display:none!important}
 @media (prefers-reduced-motion:no-preference){
   .pulse svg.star{animation:p 1.4s ease-in-out infinite}
@@ -279,6 +280,18 @@ body.has-player .wrap{padding-bottom:110px}
         <label class="chip"><input type="checkbox" value="影视取景"><span>影视取景</span></label>
         <label class="chip"><input type="checkbox" value="拍照机位"><span>拍照机位</span></label>
       </div>
+      <label class="lbl" for="stylePreset">讲解风格</label>
+      <select class="field" id="stylePreset">
+        <option value="default">默认：挑重要的讲</option>
+        <option value="brief">简短：只说最关键的</option>
+        <option value="story">故事型：像讲一段往事</option>
+        <option value="fun">轻松幽默</option>
+        <option value="kids">讲给孩子听</option>
+        <option value="expert">深度专业</option>
+      </select>
+      <label class="lbl" for="customPrompt">自定义要求（讲解、展板和追问都会带上）</label>
+      <textarea class="field" id="customPrompt" rows="4" placeholder="例如：多讲和中国有关的联系；提到电影时告诉我片名和年份；不用讲建筑风格"></textarea>
+      <p class="hint" id="styleSaved">风格和自定义要求会自动保存，对下一次讲解生效。</p>
       <label class="lbl" for="voice">语音音色（OpenAI）</label>
       <select class="field" id="voice">
         <option value="nova">nova</option><option value="coral">coral</option><option value="alloy">alloy</option>
@@ -351,7 +364,7 @@ const player = new Audio(); player.preload = "auto"; player.setAttribute("playsi
 /* ---------- 初始化 ---------- */
 function showApp(){ $("setupWrap").classList.add("hide"); $("app").classList.remove("hide"); if (map) setTimeout(() => map.invalidateSize(), 50); }
 function showSetup(){ $("app").classList.add("hide"); $("setupWrap").classList.remove("hide"); $("setup").classList.remove("hide"); }
-for (const id of ["voice", "rate"]) {
+for (const id of ["voice", "rate", "stylePreset"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
   $(id).onchange = () => store.set("wg_" + id, $(id).value);
 }
@@ -627,13 +640,27 @@ function tourPrompt(focus, picked){
     ? `\n\n游客在地图上点了「${focus}」${where}，想听它的讲解。这次只讲这一个地方：直接照下面的格式写一个「## 」标题加 3–5 条要点。如果它和附近其他地方或之前讲过的地方有关联，可以点出来。`
     : `\n\n游客说之前讲错了地方，他眼前其实是「${focus}」${where}。这次只讲这一个地方。`;
   if (p && !nearby.includes(p)) nearby = [p, ...nearby].slice(0, 15);   // 确保这个地方的资料在清单里
-  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}`;
+  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}${styleExtra()}`;
 }
 function askPrompt(q){
-  return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，400 字以内。`;
+  return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，长短看问题需要。${styleExtra()}`;
 }
 
-function followText(pane, q){
+const STYLE_PRESETS = {
+  default: "",
+  brief: "尽量简短：只说最关键的一两点，一句话能说完就别说两句。",
+  story: "用讲故事的方式：有人物、有场景、有前因后果，像在讲一段往事；但事实不能虚构。",
+  fun: "语气轻松幽默，可以适当调侃、打比方，但不要为了好笑牺牲准确。",
+  kids: "讲给 8 到 12 岁的孩子听：用简单的词，多用比喻和生活里的例子，少用专业术语和年份数字。",
+  expert: "讲得更深更专业：可以用专业术语（第一次出现时简单解释一下），多讲背后的原因、流派、学术观点和争议。",
+};
+function styleExtra(){
+  const p = STYLE_PRESETS[$("stylePreset").value] || "", c = $("customPrompt").value.trim();
+  if (!p && !c) return "";
+  return "\n\n游客的个性化要求（优先于上面的风格、格式和长度要求；但事实必须准确，不能编造）：\n" + [p, c].filter(Boolean).join("\n");
+}
+function followText(pane, q){ return followTextBase(pane, q) + styleExtra(); }
+function followTextBase(pane, q){
   if (pane === "photo") return [
     `游客接着问：${q}`, "",
     "结合前面照片里的内容回答。照片里没有、由你补充的背景要说明是补充的，只讲有把握的事实。",
@@ -692,7 +719,7 @@ function photoPrompt(list){
     `- 长度：每张照片对应的内容不超过 150 字${many ? "，整体紧凑" : ""}。`,
     ...common,
   ];
-  content.push({ type: "text", text: rules.join("\n") });
+  content.push({ type: "text", text: rules.join("\n") + styleExtra() });
   return content;
 }
 
@@ -1194,6 +1221,15 @@ function showTab(k){
   if (k === "map" && map) setTimeout(() => map.invalidateSize(), 50);
 }
 document.querySelectorAll(".tabbar [data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+/* ---------- 自定义讲解风格 ---------- */
+$("customPrompt").value = store.get("wg_custom");
+let customTimer = null;
+$("customPrompt").addEventListener("input", () => {
+  clearTimeout(customTimer);
+  customTimer = setTimeout(() => { store.set("wg_custom", $("customPrompt").value); $("styleSaved").textContent = "已保存，对下一次讲解生效。"; }, 400);
+});
+$("stylePreset").addEventListener("change", () => { $("styleSaved").textContent = "已保存，对下一次讲解生效。"; });
 </script>
 </body>
 </html>
