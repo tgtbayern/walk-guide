@@ -125,6 +125,37 @@ body.has-player .wrap{padding-bottom:110px}
 .thinking{color:var(--muted)}
 .err{color:var(--star);font-weight:600}
 .foot{margin-top:30px;font-size:13px;color:var(--muted)}
+/* ---------- App 布局：顶栏 / 内容 / 追问栏 / 播放条 / 底部标签栏 ---------- */
+.app{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--paper);padding-top:env(safe-area-inset-top,0px)}
+.topbar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 16px;border-bottom:2px solid var(--line)}
+.topbar .title{margin:0;gap:8px}
+.topbar h1{font-family:var(--cjk);font-size:19px}
+.topbar svg.star{width:22px;height:22px}
+.loc-mini{font-size:12px;color:var(--muted);text-align:right}
+.panes{flex:1;min-height:0;position:relative}
+.pane{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 16px 20px}
+#pane-map{display:flex;flex-direction:column;padding:0;overflow:hidden}
+#pane-map .map-wrap{flex:none;height:40%;margin:0}
+#pane-map #map{height:100%;min-height:0;max-height:none;border:0;border-radius:0;border-bottom:2px solid var(--line)}
+#pane-map .map-btn{bottom:14px}
+#pane-map #go{position:absolute;left:12px;bottom:14px;z-index:500;width:auto;margin:0;padding:11px 18px;border-radius:999px;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+#pane-map #go svg{width:18px;height:18px}
+.sheet .row:first-child{margin-top:0}
+.sheet{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:12px 16px 20px}
+.sheet .main-btn{margin-top:0;padding:14px;font-size:18px}
+.pane-title{margin:14px 0 2px;font-size:20px;font-weight:700}
+.composer{flex:none;display:flex;gap:8px;padding:8px 12px;border-top:2px solid var(--line);background:var(--paper)}
+.composer .field{margin:0;padding:10px 14px}
+.composer button{flex:none;padding:0 18px;border:0;border-radius:12px;background:var(--sky);color:#fff;font:700 16px var(--cjk);cursor:pointer}
+.composer button:disabled{opacity:.5}
+.app .player{position:static;box-shadow:none;padding:8px 12px;border-top:2px solid var(--line)}
+.tabbar{flex:none;display:flex;border-top:2px solid var(--line);background:var(--paper);padding-bottom:env(safe-area-inset-bottom,0px)}
+.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 5px;border:0;background:none;color:var(--muted);font:600 12px var(--cjk);cursor:pointer}
+.tabbar svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.tabbar button[aria-selected="true"]{color:var(--star)}
+.story{margin-top:16px}
+.turn+.turn{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
+.story .q{display:inline-block;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--mist);color:var(--ink)}
 .hide{display:none!important}
 @media (prefers-reduced-motion:no-preference){
   .pulse svg.star{animation:p 1.4s ease-in-out infinite}
@@ -133,13 +164,13 @@ body.has-player .wrap{padding-bottom:110px}
 </style>
 </head>
 <body>
-<div class="wrap">
+<div class="wrap" id="setupWrap">
   <header class="flag">
-    <div class="title" id="titleRow">
+    <div class="title">
       <svg class="star" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,2 61,32 94,24 72,50 94,76 61,68 50,98 39,68 6,76 28,50 6,24 39,32"/></svg>
       <h1>Walk <span>随身导游</span></h1>
     </div>
-    <p class="sub">边走边听身边建筑和街区的故事。</p>
+    <p class="sub">边走边听身边的历史、文化和故事。</p>
   </header>
 
   <section id="setup" class="hide">
@@ -158,38 +189,45 @@ body.has-player .wrap{padding-bottom:110px}
     <p class="err" id="keyErr" role="alert"></p>
     <button class="main-btn" id="saveKeys">开始</button>
   </section>
+</div>
 
-  <section id="app" class="hide">
-    <section class="loc" aria-live="polite">
-      <div class="state" id="locState">还没有定位</div>
-      <div class="coords" id="coords">点下面的按钮开始</div>
+<div class="app hide" id="app">
+  <header class="topbar">
+    <div class="title" id="titleRow">
+      <svg class="star" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,2 61,32 94,24 72,50 94,76 61,68 50,98 39,68 6,76 28,50 6,24 39,32"/></svg>
+      <h1>随身导游</h1>
+    </div>
+    <div class="loc-mini" id="locState" aria-live="polite">还没有定位</div>
+  </header>
+
+  <main class="panes">
+    <!-- 地图 -->
+    <section class="pane" id="pane-map" role="tabpanel" aria-label="地图">
+      <div class="map-wrap" id="mapWrap">
+        <div id="map" role="application" aria-label="附近景点地图"></div>
+        <button class="map-btn" id="recenter" type="button" aria-label="回到我的位置">◎</button>
+        <button class="main-btn" id="go" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+          讲讲我附近
+        </button>
+      </div>
+      <div class="sheet" id="sheet-map">
+        <div class="row">
+          <button class="ghost" id="autoBtn" aria-pressed="false">自动讲解：关</button>
+          <button class="ghost" id="voiceBtn" aria-pressed="true">朗读：开</button>
+        </div>
+        <div class="row hide" id="stopRow"><button class="ghost" id="stopBtn">停止</button></div>
+        <div class="status" id="status" role="status"></div>
+        <article class="story" id="story-map" aria-live="polite">
+          <p class="hint">点地图上的照片听讲解，或者点「讲讲我附近」。讲完可以在下面接着问。</p>
+        </article>
+      </div>
     </section>
 
-    <div class="map-wrap" id="mapWrap">
-      <div id="map" role="application" aria-label="附近景点地图"></div>
-      <button class="map-btn" id="recenter" type="button" aria-label="回到我的位置">◎</button>
-      <p class="map-hint">蓝点是你，带照片的是附近景点。点哪个就讲哪个。</p>
-    </div>
-
-    <button class="main-btn" id="go">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-      讲讲我附近
-    </button>
-    <div class="row">
-      <button class="ghost" id="autoBtn" aria-pressed="false">自动讲解：关</button>
-      <button class="ghost" id="voiceBtn" aria-pressed="true">朗读：开</button>
-    </div>
-    <div class="row hide" id="stopRow"><button class="ghost" id="stopBtn">停止</button></div>
-    <div class="status" id="status" role="status"></div>
-
-    <div class="ask">
-      <input class="field" id="question" type="text" placeholder="问导游：这栋楼谁设计的？" enterkeyhint="send">
-      <button class="ghost" id="askBtn">问</button>
-    </div>
-
-    <section class="cam">
-      <p class="cam-title">展板讲解</p>
-      <p class="hint">拍下一张或几张展板，整理成一段连贯的中文讲解并朗读。可以连续拍好几张再一起讲。</p>
+    <!-- 展板 -->
+    <section class="pane hide" id="pane-photo" role="tabpanel" aria-label="展板">
+      <p class="pane-title">展板讲解</p>
+      <p class="hint">拍下一张或几张展板，整理成中文讲解并朗读。讲完可以在下面接着问。</p>
       <div class="seg" role="group" aria-label="讲解方式">
         <button id="pmSent" type="button" aria-pressed="false">按句翻译</button>
         <button id="pmDense" type="button" aria-pressed="true">精炼讲解</button>
@@ -197,7 +235,7 @@ body.has-player .wrap{padding-bottom:110px}
       <p class="hint" id="pmHint"></p>
       <div class="row">
         <button class="ghost" id="camBtn" type="button">📷 拍一张</button>
-        <button class="ghost" id="albumBtn" type="button">从相册选（可多选）</button>
+        <button class="ghost" id="albumBtn" type="button">从相册选</button>
       </div>
       <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
       <input type="file" id="albumInput" accept="image/*" multiple hidden>
@@ -219,14 +257,19 @@ body.has-player .wrap{padding-bottom:110px}
         </div>
         <button class="main-btn" id="cropDone" type="button">完成</button>
       </div>
+      <article class="story" id="story-photo" aria-live="polite"></article>
     </section>
 
-    <article class="story" id="story" aria-live="polite"></article>
-
-    <details>
-      <summary>补充说明、兴趣和设置</summary>
+    <!-- 设置 -->
+    <section class="pane hide" id="pane-settings" role="tabpanel" aria-label="设置">
+      <p class="pane-title">设置</p>
+      <section class="loc">
+        <div class="state">定位</div>
+        <div class="coords" id="coords">还没有定位</div>
+      </section>
       <label class="lbl" for="note">补充说明（写一句你看到的东西，定位会准很多）</label>
       <input class="field" id="note" type="text" placeholder="例如：我面前是一栋黑色玻璃高楼，右边是红色的桥">
+      <label class="lbl">想听的方向</label>
       <div class="chips" id="chips">
         <label class="chip"><input type="checkbox" value="历史事件和人物" checked><span>历史</span></label>
         <label class="chip"><input type="checkbox" value="城市文化和习俗" checked><span>文化</span></label>
@@ -248,26 +291,48 @@ body.has-player .wrap{padding-bottom:110px}
       </select>
       <div class="row"><button class="ghost" id="resetKeys">更换 API key</button></div>
       <p class="hint" id="keyExp"></p>
-      <p class="hint">自动讲解：每走出约 300 米且距上次至少 4 分钟会自动讲下一段，连续 12 段后暂停。页面要保持在前台，锁屏后定位会停。</p>
-    </details>
+      <p class="hint">自动讲解：每走出约 300 米且距上次至少 4 分钟会自动讲下一段，连续 12 段后暂停。App 要保持在前台，锁屏后定位会停。</p>
+      <p class="foot">讲解由 AI 结合公开资料生成，具体数字和年份请以权威资料为准。</p>
+    </section>
+  </main>
 
-    <p class="foot">讲解由 AI 根据位置推断，具体数字和年份请以权威资料为准。</p>
-  </section>
-</div>
+  <div class="composer" id="composer">
+    <input class="field" id="question" type="text" placeholder="接着问，或者问导游任何问题…" enterkeyhint="send" aria-label="追问">
+    <button id="askBtn" type="button">问</button>
+  </div>
 
-<div class="player hide" id="player" role="region" aria-label="朗读控制">
-  <button id="plToggle" type="button" aria-label="暂停">❚❚</button>
-  <button id="plReplay" type="button" aria-label="从头播放">↺</button>
-  <button id="plRate" type="button" aria-label="朗读速度，点一下切换">1.5×</button>
-  <div class="pl-bar" id="plBar" role="slider" aria-label="朗读进度"><div class="pl-track"><div class="pl-fill" id="plFill"></div></div></div>
-  <span class="pl-label" id="plLabel">0/0 段</span>
+  <div class="player hide" id="player" role="region" aria-label="朗读控制">
+    <button id="plToggle" type="button" aria-label="暂停">❚❚</button>
+    <button id="plReplay" type="button" aria-label="从头播放">↺</button>
+    <button id="plRate" type="button" aria-label="朗读速度，点一下切换">1.5×</button>
+    <div class="pl-bar" id="plBar" role="slider" aria-label="朗读进度"><div class="pl-track"><div class="pl-fill" id="plFill"></div></div></div>
+    <span class="pl-label" id="plLabel">0/0 段</span>
+  </div>
+
+  <nav class="tabbar" role="tablist">
+    <button type="button" role="tab" data-tab="map" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>地图</button>
+    <button type="button" role="tab" data-tab="photo" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>展板</button>
+    <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>设置</button>
+  </nav>
 </div>
 <script>
 const MODEL = "claude-sonnet-5-5";
-const showFatal = msg => { const el = document.getElementById("story"); if (el) el.insertAdjacentHTML("beforeend", `<p class="err">出错了：${String(msg).replace(/[&<>]/g, "")}</p>`); };
+const showFatal = msg => { const el = document.getElementById("story-" + (window.writeTo || "map")); if (el) el.insertAdjacentHTML("beforeend", `<p class="err">出错了：${String(msg).replace(/[&<>]/g, "")}</p>`); };
 window.addEventListener("error", e => showFatal(e.message));
 window.addEventListener("unhandledrejection", e => showFatal(e.reason?.message || e.reason?.msg || e.reason));
-const $ = id => document.getElementById(id);
+/* 两条对话线程：地图讲解、展板讲解。每次讲解或追问是一个 turn；
+   代码里写 $("story") 就是写进当前 turn。*/
+var writeTo = "map", activeTab = "map";
+const threads = { map: { msgs: [], turn: null }, photo: { msgs: [], turn: null } };
+function newTurn(k, fresh){
+  const box = document.getElementById("story-" + k), t = threads[k];
+  if (fresh) { box.innerHTML = ""; t.msgs = []; }
+  t.turn = document.createElement("div"); t.turn.className = "turn";
+  box.appendChild(t.turn);
+  return t.turn;
+}
+function curTurn(){ const t = threads[writeTo]; return t.turn || newTurn(writeTo, false); }
+const $ = id => id === "story" ? curTurn() : document.getElementById(id);
 const AUTO_DIST = 300, AUTO_GAP = 4 * 60 * 1000, AUTO_MAX = 12;
 const keys = { wg_kA: "", wg_kO: "" };   // API key 只放在内存里，关掉或刷新页面就没了
 const store = {
@@ -284,8 +349,8 @@ const speechRate = () => parseFloat(document.getElementById("rate")?.value || "1
 const player = new Audio(); player.preload = "auto"; player.setAttribute("playsinline", "");
 
 /* ---------- 初始化 ---------- */
-function showApp(){ $("setup").classList.add("hide"); $("app").classList.remove("hide"); }
-function showSetup(){ $("app").classList.add("hide"); $("setup").classList.remove("hide"); }
+function showApp(){ $("setupWrap").classList.add("hide"); $("app").classList.remove("hide"); if (map) setTimeout(() => map.invalidateSize(), 50); }
+function showSetup(){ $("app").classList.add("hide"); $("setupWrap").classList.remove("hide"); $("setup").classList.remove("hide"); }
 for (const id of ["voice", "rate"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
   $(id).onchange = () => store.set("wg_" + id, $(id).value);
@@ -513,9 +578,8 @@ function renderPlaces(){
 }
 async function pickPlace(p){
   selected = p.name; renderPlaces();
-  unlockAudio();
+  unlockAudio(); showTab("map");
   if (busy) { ctl?.abort(); resetSpeech(); for (let i = 0; i < 30 && busy; i++) await new Promise(r => setTimeout(r, 100)); }
-  $("story").scrollIntoView({ behavior: "smooth", block: "start" });
   run({ focus: p.name, picked: true });
 }
 async function refreshPlaces(){
@@ -568,6 +632,21 @@ function tourPrompt(focus, picked){
 function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，400 字以内。`;
 }
+
+function followText(pane, q){
+  if (pane === "photo") return [
+    `游客接着问：${q}`, "",
+    "结合前面照片里的内容回答。照片里没有、由你补充的背景要说明是补充的，只讲有把握的事实。",
+    "直接回答，长短看问题需要，口语化、适合朗读；不要客套，不要加粗。人名、作品名第一次出现附原文。",
+  ].join("\n");
+  const where = pos ? `他现在在纬度 ${pos.coords.latitude.toFixed(5)}、经度 ${pos.coords.longitude.toFixed(5)}${address ? "（" + address + "）" : ""}。` : "";
+  return [
+    `游客接着问：${q}`, where, "",
+    "接着前面的讲解回答。只讲有把握的事实，不确定就直说；直接回答，长短看问题需要，需要分段时可以用「## 小标题」。",
+    "不要客套，不要加粗。人名、地名第一次出现附英文原名。",
+  ].join("\n");
+}
+function openNote(){ showTab("settings"); setTimeout(() => $("note").focus(), 100); }
 
 const PHOTO_MODES = {
   sent: "逐句完整翻译，顺序和内容跟原文一致，不删减。",
@@ -788,7 +867,7 @@ async function streamClaude(prompt, onText, signal){
       "anthropic-dangerous-direct-browser-access": "true",
       "content-type": "application/json",
     },
-    body: JSON.stringify({ model: MODEL, max_tokens: 6000, thinking: { type: "between_tools" }, stream: true, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: MODEL, max_tokens: 6000, thinking: { type: "between_tools" }, stream: true, messages: Array.isArray(prompt) && prompt[0] && prompt[0].role ? prompt : [{ role: "user", content: prompt }] }),
   });
   if (!res.ok) {
     let msg = ""; try { msg = (await res.json()).error?.message || ""; } catch (_) {}
@@ -826,13 +905,18 @@ function errText(e){
 }
 
 /* ---------- 一次讲解 / 问答 ---------- */
-async function run({ auto = false, question = "", focus = "", picked = false, photo = "" } = {}){
+async function run({ auto = false, question = "", focus = "", picked = false, photo = "", follow = "" } = {}){
   if (busy) return;
   busy = true; resetSpeech();
+  const pane = follow ? (activeTab === "photo" ? "photo" : "map") : (photo ? "photo" : "map");
+  writeTo = pane;
+  const turn = newTurn(pane, !follow);
+  if (follow) setTimeout(() => turn.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+  else document.getElementById(pane === "map" ? "sheet-map" : "pane-photo").scrollTo({ top: 0, behavior: "smooth" });
   $("go").disabled = true; $("askBtn").disabled = true;
   $("titleRow").classList.add("pulse");
 
-  if (!auto && !focus && !photo) {
+  if (!auto && !focus && !photo && !follow) {
     $("locState").textContent = "正在定位…";
     $("story").innerHTML = '<p class="thinking">正在获取你的位置…如果浏览器弹出定位授权，请点允许。</p>';
     try { pos = await locateBest(); $("locState").textContent = "已定位"; $("coords").textContent = fmt(pos); updateMe(); }
@@ -840,18 +924,18 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
       if (!pos) { $("locState").textContent = "没有定位"; $("coords").textContent = geoErr(e); }
       if (!pos && !$("note").value.trim() && !question) {
         $("story").innerHTML = `<p class="err">${esc(geoErr(e))}</p><p>也可以不用定位：在下面「补充说明」里写你在哪，再点「讲讲我附近」。</p>`;
-        document.querySelector("details").open = true;
+        openNote();
         return done();
       }
     }
   }
   if (auto) { autoCount++; if (navigator.vibrate) navigator.vibrate(120); }
-  if (pos && !focus && !photo) {
+  if (pos && !focus && !photo && !follow) {
     $("story").innerHTML = '<p class="thinking">正在查你附近有哪些建筑…</p>';
     await gatherNearby();
   }
 
-  $("story").innerHTML = `${question ? `<p class="q">你问：${esc(question)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}${photo ? "正在看照片、整理讲解…" : "正在想…"}</p>`;
+  $("story").innerHTML = `${question || follow ? `<p class="q">你问：${esc(question || follow)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}${photo ? "正在看照片、整理讲解…" : "正在想…"}</p>`;
   $("stopRow").classList.remove("hide");
   ctl = new AbortController();
 
@@ -873,11 +957,14 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
   };
 
   try {
-    const prompt = photo ? photoPrompt(photo) : question ? askPrompt(question) : tourPrompt(focus, picked);
-    const text = await streamClaude(prompt, t => { render(t, question); flush(t, false); }, ctl.signal);
-    render(text, question); flush(text, true);
+    const userContent = follow ? followText(pane, follow) : photo ? photoPrompt(photo) : question ? askPrompt(question) : tourPrompt(focus, picked);
+    const prompt = follow ? [...threads[pane].msgs, { role: "user", content: userContent }] : userContent;
+    const q = question || follow;
+    const text = await streamClaude(prompt, t => { render(t, q); flush(t, false); }, ctl.signal);
+    render(text, q); flush(text, true);
+    threads[pane].msgs.push({ role: "user", content: userContent }, { role: "assistant", content: text });
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
-    if (!question && !photo) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked) showPicker(); }
+    if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked) showPicker(); }
   } catch (e) {
     const msg = errText(e);
     if (msg) $("story").insertAdjacentHTML("beforeend", `<p class="err">${esc(msg)}</p>`);
@@ -911,7 +998,7 @@ function showPicker(){
   }
   const other = document.createElement("button");
   other.className = "pick"; other.type = "button"; other.textContent = "都不是，我来描述";
-  other.onclick = () => { document.querySelector("details").open = true; $("note").focus(); };
+  other.onclick = () => openNote();
   box.appendChild(other);
   $("story").appendChild(box);
 }
@@ -966,7 +1053,15 @@ $("voiceBtn").onclick = () => {
   $("voiceBtn").textContent = voiceOn ? "朗读：开" : "朗读：关";
   if (voiceOn) unlockAudio(); else resetSpeech();
 };
-const ask = () => { const q = $("question").value.trim(); if (!q) return; $("question").value = ""; unlockAudio(); run({ question: q }); };
+const ask = () => {
+  const q = $("question").value.trim(); if (!q) return;
+  const k = activeTab === "photo" ? "photo" : "map";
+  if (k === "photo" && !threads.photo.msgs.length) { $("trayHint").textContent = "先拍照讲解一次，再接着问。"; $("camBtn").focus(); return; }
+  $("question").value = ""; $("question").blur(); unlockAudio();
+  if (busy) { ctl?.abort(); }
+  const go = () => threads[k].msgs.length ? run({ follow: q }) : run({ question: q });
+  if (busy) { const w = setInterval(() => { if (!busy) { clearInterval(w); go(); } }, 100); } else go();
+};
 $("askBtn").onclick = ask;
 $("question").addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
 
@@ -1064,7 +1159,6 @@ $("cropGo").onclick = async () => {
   const list = ready.map(shotBase64);
   closeEditor();
   if (busy) { ctl?.abort(); resetSpeech(); for (let i = 0; i < 30 && busy; i++) await new Promise(r => setTimeout(r, 100)); }
-  $("story").scrollIntoView({ behavior: "smooth", block: "start" });
   run({ photo: list });
 };
 
@@ -1087,6 +1181,19 @@ $("plRate").onclick = () => {
   $("rate").dispatchEvent(new Event("change"));   // 同步保存设置、并立即改变正在播放的速度
   updatePlayer();
 };
+
+/* ---------- 底部标签栏 ---------- */
+function showTab(k){
+  activeTab = k;
+  for (const t of ["map", "photo", "settings"]) {
+    $("pane-" + t).classList.toggle("hide", t !== k);
+    document.querySelector(`.tabbar [data-tab="${t}"]`).setAttribute("aria-selected", t === k);
+  }
+  $("composer").classList.toggle("hide", k === "settings");
+  $("question").placeholder = k === "photo" ? "对展板内容接着问…" : "接着问，或者问导游任何问题…";
+  if (k === "map" && map) setTimeout(() => map.invalidateSize(), 50);
+}
+document.querySelectorAll(".tabbar [data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 </script>
 </body>
 </html>
