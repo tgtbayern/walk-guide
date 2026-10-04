@@ -223,6 +223,10 @@ async function bootMap(){
     updateMe(); startWatch();
     $("story").innerHTML = '<p class="thinking">正在找你附近的景点…</p>';
     await gatherNearby();
+    if (map && places.length) {   // 把最近的几个景点和你一起框进视野
+      const pts = places.slice(0, 6).map(p => [p.lat, p.lon]).concat([[pos.coords.latitude, pos.coords.longitude]]);
+      map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+    }
     $("story").innerHTML = places.length
       ? `<p>附近找到 ${places.length} 个景点，已经标在地图上了。点照片就开讲，或者点「讲讲我附近」让我挑最近的讲。</p>`
       : "<p>这附近没查到带资料的景点。可以点「讲讲我附近」试试。</p>";
@@ -364,8 +368,8 @@ let map = null, meDot = null, meRing = null, placeLayer = null, selected = "", f
 function initMap(lat, lon){
   if (map || !window.L) { if (!window.L) $("mapWrap").classList.add("hide"); return; }
   map = L.map("map", { zoomControl: false, attributionControl: true }).setView([lat, lon], 17);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    maxZoom: 20, subdomains: "abcd", attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
   placeLayer = L.layerGroup().addTo(map);
   meRing = L.circle([lat, lon], { radius: 30, color: "#1a73e8", weight: 1, fillColor: "#1a73e8", fillOpacity: .12, interactive: false }).addTo(map);
