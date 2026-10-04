@@ -72,6 +72,11 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
 .pin.on span{background:var(--star);color:#fff}
 .cam{margin-top:22px;padding-top:16px;border-top:2px solid var(--line)}
 .cam-title{margin:0 0 4px;font-weight:700}
+.seg{display:flex;margin-top:12px;border:2px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{flex:1;padding:11px 8px;border:0;background:transparent;color:var(--ink);font:600 15px var(--cjk);cursor:pointer}
+.seg button+button{border-left:2px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--sky);color:#fff}
+.player #plRate{width:auto;min-width:52px;padding:0 10px;border-radius:22px;background:var(--mist);color:var(--ink);font:700 14px var(--latin)}
 .tray{display:flex;gap:10px;overflow-x:auto;padding:12px 2px 4px}
 .shot{position:relative;flex:none;width:76px;height:76px;border-radius:10px;overflow:visible;border:2px solid var(--line);background:#000;cursor:pointer;padding:0}
 .shot img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
@@ -171,6 +176,11 @@ body.has-player .wrap{padding-bottom:110px}
     <section class="cam">
       <p class="cam-title">展板讲解</p>
       <p class="hint">拍下一张或几张展板，整理成一段连贯的中文讲解并朗读。可以连续拍好几张再一起讲。</p>
+      <div class="seg" role="group" aria-label="讲解方式">
+        <button id="pmSent" type="button" aria-pressed="false">按句翻译</button>
+        <button id="pmDense" type="button" aria-pressed="true">精炼讲解</button>
+      </div>
+      <p class="hint" id="pmHint"></p>
       <div class="row">
         <button class="ghost" id="camBtn" type="button">📷 拍一张</button>
         <button class="ghost" id="albumBtn" type="button">从相册选（可多选）</button>
@@ -231,6 +241,7 @@ body.has-player .wrap{padding-bottom:110px}
 <div class="player hide" id="player" role="region" aria-label="朗读控制">
   <button id="plToggle" type="button" aria-label="暂停">❚❚</button>
   <button id="plReplay" type="button" aria-label="从头播放">↺</button>
+  <button id="plRate" type="button" aria-label="朗读速度，点一下切换">1.5×</button>
   <div class="pl-bar" id="plBar" role="slider" aria-label="朗读进度"><div class="pl-track"><div class="pl-fill" id="plFill"></div></div></div>
   <span class="pl-label" id="plLabel">0/0 段</span>
 </div>
@@ -517,27 +528,51 @@ function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，400 字以内。`;
 }
 
+const PHOTO_MODES = {
+  sent: "逐句完整翻译，顺序和内容跟原文一致，不删减。",
+  dense: "提炼成高密度的口语讲解，只留最有价值的信息，几张照片串成一段。",
+};
+function photoMode(){ return store.get("wg_pmode") === "sent" ? "sent" : "dense"; }
+function setPhotoMode(m){
+  store.set("wg_pmode", m);
+  $("pmSent").setAttribute("aria-pressed", m === "sent");
+  $("pmDense").setAttribute("aria-pressed", m === "dense");
+  $("pmHint").textContent = PHOTO_MODES[m];
+  renderTray();
+}
 function photoPrompt(list){
-  const n = list.length, many = n > 1, content = [];
+  const n = list.length, many = n > 1, content = [], mode = photoMode();
   list.forEach((b64, i) => {
     if (many) content.push({ type: "text", text: `照片 ${i + 1}：` });
     content.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } });
   });
-  content.push({ type: "text", text: [
-    many ? `上面是游客在博物馆里依次拍下的 ${n} 张展板或展签照片（按拍摄顺序）。` : "上面是游客在博物馆里拍下的一张展板或展签照片。",
-    "请把照片上的说明文字改写成一篇给耳朵听的中文讲解稿，它会直接用语音读给游客听。",
-    many
-      ? "把所有照片的内容串成一个整体：开头用一两句交代这组内容的主题或展览背景；然后按最自然的顺序讲（不一定是拍摄顺序），段与段之间用过渡句衔接，点出它们之间的联系，比如同一位艺术家、同一时代、前因后果或前后对比；重复出现的内容只讲一次。"
-      : "开头一句点明这是什么（哪件展品或哪个主题），再展开讲。",
-    "改写原则：",
-    "- 忠于原文的事实，不要编造；可以补一两句公认的背景帮助理解，但不能喧宾夺主。",
-    "- 不要逐字翻译。用短句和口语，像讲解员在耳边说话。",
-    "- 只适合看、不适合听的内容要转化：藏品编号、登记号、图片版权、精确尺寸直接省略；捐赠来源、收藏信息最多一句带过；年代和数字改成顺口的说法（比如「1884 年到 1886 年」「两米多宽」）；缩写和符号展开说；清单改成连贯的句子。",
+  const head = many ? `上面是游客在博物馆里依次拍下的 ${n} 张展板或展签照片（按拍摄顺序）。` : "上面是游客在博物馆里拍下的一张展板或展签照片。";
+  const common = [
     "- 人名、作品名第一次出现时用中文译名，后面括号附原文（括号里的原文不会被读出来）。",
-    "格式：每件展品或每个主题用一行「## 中文小标题」开头，下面是自然段，每段一行；不要用列表符号，不要加粗。",
-    "只输出讲解稿本身，不要说「这张照片」「这块展板」「照片 1」之类的话。看不清的部分直接跳过，不要猜。",
-    `长度：每张照片对应的内容控制在 250 字以内${many ? "，整体紧凑不重复" : ""}。`,
-  ].join("\n") });
+    "- 年代和数字写成顺口的说法（比如「1884 年到 1886 年」），缩写和符号展开说。",
+    "只输出正文本身，不要说「这张照片」「这块展板」「照片 1」之类的话，不要用列表符号，不要加粗。看不清的部分直接跳过，不要猜。",
+  ];
+  const rules = mode === "sent" ? [
+    head,
+    "请把照片上的说明文字逐句完整翻译成中文，译文会直接用语音读给游客听。",
+    "- 按原文顺序一句一句翻，不删减、不概括、不加评论；意思准确，语句通顺、读起来顺口。",
+    many ? "- 按拍摄顺序逐张翻译，每张照片的内容用一行「## 中文标题」开头（原文没有标题就用一个简短的概括）；不同照片里重复的文字只翻一次。"
+         : "- 原文有标题的话，第一行写「## 中文标题」。",
+    "- 作者、年代、材质、收藏来源等信息都要译出，写成完整的句子；只有藏品编号、登记号、图片版权这类纯编号的行可以省略。",
+    "- 原文每一段对应译文的一行。",
+    ...common,
+  ] : [
+    head,
+    "请把照片上的内容提炼成一篇信息密度高的中文语音讲解稿，会直接读给游客听。",
+    many ? "- 把所有照片串成一个整体：开头一句点出主题，再按最自然的顺序讲（不一定是拍摄顺序），用简短的过渡点出它们之间的联系（同一位艺术家、同一时代、前因后果、对比）；重复的内容只讲一次。"
+         : "- 开头一句点明这是什么，再讲要点。",
+    "- 只留最有价值的事实：是什么、谁做的、什么时候、为什么重要、现场该看哪里。删掉铺垫、套话、形容词堆砌和重复。",
+    "- 忠于原文，不要编造；最多补一句公认的背景。藏品编号、尺寸、版权、捐赠来源直接省略。",
+    "- 用短句和口语。每件展品或每个主题用一行「## 中文小标题」开头，下面是自然段，每段一行。",
+    `- 长度：每张照片对应的内容不超过 150 字${many ? "，整体紧凑" : ""}。`,
+    ...common,
+  ];
+  content.push({ type: "text", text: rules.join("\n") });
   return content;
 }
 
@@ -684,6 +719,7 @@ function updatePlayer(){
   $("plToggle").textContent = on ? "❚❚" : "▶";
   $("plToggle").setAttribute("aria-label", on ? "暂停" : "播放");
   if (!plDrag) $("plFill").style.width = (speechProgress() * 100).toFixed(1) + "%";
+  $("plRate").textContent = speechRate() + "×";
   $("plLabel").textContent = `${Math.min(Math.max(cur, 0) + 1, track.length)}/${track.length} 段`;
 }
 setInterval(updatePlayer, 250);
@@ -918,7 +954,7 @@ function renderTray(){
     tray.appendChild(b);
   });
   if (shots.length) {
-    $("cropGo").textContent = shots.length > 1 ? `串起来讲这 ${shots.length} 张` : "讲解这张";
+    $("cropGo").textContent = photoMode() === "sent" ? (shots.length > 1 ? `逐句翻译这 ${shots.length} 张` : "逐句翻译这张") : (shots.length > 1 ? `串起来讲这 ${shots.length} 张` : "讲解这张");
     if (shots.length < MAX_SHOTS) $("trayHint").textContent = "点缩略图可以框选要讲的部分；不框选就自动找文字。";
   }
 }
@@ -999,6 +1035,17 @@ const plFrac = e => { const r = $("plBar").getBoundingClientRect(); return Math.
 $("plBar").addEventListener("pointerdown", e => { plDrag = true; $("plBar").setPointerCapture(e.pointerId); $("plFill").style.width = plFrac(e) * 100 + "%"; });
 $("plBar").addEventListener("pointermove", e => { if (plDrag) $("plFill").style.width = plFrac(e) * 100 + "%"; });
 $("plBar").addEventListener("pointerup", e => { if (!plDrag) return; plDrag = false; seekSpeech(plFrac(e)); });
+
+/* ---------- 讲解方式与语速 ---------- */
+setPhotoMode(photoMode());
+$("pmSent").onclick = () => setPhotoMode("sent");
+$("pmDense").onclick = () => setPhotoMode("dense");
+$("plRate").onclick = () => {
+  const opts = [...$("rate").options].map(o => o.value), i = opts.indexOf($("rate").value);
+  $("rate").value = opts[(i + 1) % opts.length];
+  $("rate").dispatchEvent(new Event("change"));   // 同步保存设置、并立即改变正在播放的速度
+  updatePlayer();
+};
 </script>
 </body>
 </html>
