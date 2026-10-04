@@ -166,6 +166,11 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
         <option value="nova">nova</option><option value="coral">coral</option><option value="alloy">alloy</option>
         <option value="shimmer">shimmer</option><option value="echo">echo</option><option value="onyx">onyx</option>
       </select>
+      <label class="lbl" for="rate">朗读速度</label>
+      <select class="field" id="rate">
+        <option value="1">1.0 倍</option><option value="1.25">1.25 倍</option><option value="1.5" selected>1.5 倍</option>
+        <option value="1.75">1.75 倍</option><option value="2">2.0 倍</option>
+      </select>
       <div class="row"><button class="ghost" id="resetKeys">更换 API key</button></div>
       <p class="hint">自动讲解：每走出约 300 米且距上次至少 4 分钟会自动讲下一段，连续 12 段后暂停。页面要保持在前台，锁屏后定位会停。</p>
     </details>
@@ -192,12 +197,13 @@ let pos = null, watchId = null, ctl = null, busy = false;
 let lastTold = null, lastToldAt = 0, autoOn = false, autoCount = 0, wakeLock = null;
 let voiceOn = true;
 const covered = [];
+const speechRate = () => parseFloat(document.getElementById("rate")?.value || "1.5");
 const player = new Audio(); player.preload = "auto"; player.setAttribute("playsinline", "");
 
 /* ---------- 初始化 ---------- */
 function showApp(){ $("setup").classList.add("hide"); $("app").classList.remove("hide"); }
 function showSetup(){ $("app").classList.add("hide"); $("setup").classList.remove("hide"); }
-for (const id of ["voice"]) {
+for (const id of ["voice", "rate"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
   $(id).onchange = () => store.set("wg_" + id, $(id).value);
 }
@@ -237,6 +243,7 @@ async function bootMap(){
   }
 }
 $("recenter").onclick = () => { if (map && pos) { followed = true; map.setView([pos.coords.latitude, pos.coords.longitude], 17); } };
+$("rate").addEventListener("change", () => { player.defaultPlaybackRate = player.playbackRate = speechRate(); });
 $("resetKeys").onclick = () => { store.del("wg_kA"); store.del("wg_kO"); stopAuto(); showSetup(); };
 
 /* ---------- 定位 ---------- */
@@ -359,7 +366,7 @@ function nearbyText(){
   if (nearby.length) {
     L.push("从维基百科和 OpenStreetMap 查到的、游客附近真实存在的地点（按距离排序，距离和方向是按 GPS 算的）：");
     nearby.forEach((p, i) => L.push(`${i + 1}. ${p.name}｜${p.kind || "地点"}｜约 ${p.dist} 米，${p.dir}｜来源：${p.src}${p.info ? "｜" + p.info : ""}`));
-  } else L.push("（这次没能查到附近地点的数据，只能根据坐标判断，没把握的地方要直说。）");
+  } else L.push("（这次没能查到附近地点的数据，按坐标挑你确定的地方讲。）");
   return L.join("\n");
 }
 
@@ -430,12 +437,12 @@ const STYLE = [
   "- 人名、建筑名第一次出现时，中文名后面用括号附英文原名，例如：丹尼尔·伯纳姆（Daniel Burnham）。",
   "- 讲建筑时优先讲：原来叫什么、哪年建成、谁设计的、这位设计师还做过什么、后来经历了什么变迁（易主、空置、改造、花了多少钱、哪年以什么身份重新开业）、什么风格、外立面上游客能亲眼看到的细节。",
   "- 只写你有把握的事实。不确定的数字宁可不写，也不要编。",
-  "- 如果给了附近地点清单：只能从清单里挑要讲的地方，名称、方向和距离以清单为准，不要讲清单外的建筑；事实优先用清单里的资料，资料没写的内容只补充你非常确定的。GPS 有误差，方向和距离说成大约。",
+  "- 如果给了附近地点清单：只能从清单里挑要讲的地方，名称、方向和距离以清单为准，不要讲清单外的建筑；事实优先用清单里的资料，资料没写的内容只补充你非常确定的。方向和距离照清单写成大约。",
+  "- 只讲真正的内容：不要提 GPS 误差，不要猜测或确认游客在哪，不要说“如果你看到……就对了”，不要请游客补充信息，不要客套和免责声明，直接从地点讲起。",
 ].join("\n");
 const FORMAT_TOUR = [
   "输出格式：",
-  "第一行以「📍」开头，一句话说他大概在哪。对坐标没把握就直说，请他补充看到了什么。",
-  "然后挑 1–2 个他身边最值得讲的地方（优先他眼前能看到的、最有故事的那栋楼）。每个地方先写一行「## 名称（方向，大约距离）」，下面写 3–4 条要点，每条以「- 」开头，每条 1–3 句话，像这个例子：",
+  "挑 1–2 个他身边最值得讲的地方（优先他眼前能看到的、最有故事的那栋楼）。每个地方先写一行「## 名称（方向，大约距离）」，下面写 3–4 条要点，每条以「- 」开头，每条 1–3 句话，像这个例子：",
   "## 芝加哥 JW 万豪酒店（你左手边，约 50 米）",
   "- 这栋楼原本是大陆商业国民银行大楼（Continental & Commercial National Bank），1914 年建成，由丹尼尔·伯纳姆（Daniel Burnham）的事务所设计。伯纳姆就是做了 1909 年「芝加哥规划」的那位，名言是「不要做小计划」（Make no little plans）。",
   "- 后来银行变迁、楼空置多年，开发商花了约 3.96 亿美元修复，2010 年以芝加哥第一家 JW 万豪开业，酒店占前 12 层，上面是公寓。",
@@ -446,8 +453,8 @@ function tourPrompt(focus, picked){
   const p = focus && nearby.concat(places).find(x => x.name === focus);
   const where = p ? `（离他约 ${p.dist} 米，${p.dir}）` : "";
   const f = !focus ? "" : picked
-    ? `\n\n游客在地图上点了「${focus}」${where}，想听它的讲解。这次只讲这一个地方：第一行以「📍」开头，一句话告诉他它在哪、怎么认出来；然后照下面的格式写一个「## 」标题加 3–5 条要点。如果它和附近其他地方或之前讲过的地方有关联，可以点出来。`
-    : `\n\n游客说之前讲错了地方，他眼前其实是「${focus}」${where}。这次只讲这一个地方，开头一句话确认他的位置。`;
+    ? `\n\n游客在地图上点了「${focus}」${where}，想听它的讲解。这次只讲这一个地方：直接照下面的格式写一个「## 」标题加 3–5 条要点。如果它和附近其他地方或之前讲过的地方有关联，可以点出来。`
+    : `\n\n游客说之前讲错了地方，他眼前其实是「${focus}」${where}。这次只讲这一个地方。`;
   if (p && !nearby.includes(p)) nearby = [p, ...nearby].slice(0, 15);   // 确保这个地方的资料在清单里
   return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}`;
 }
@@ -509,7 +516,7 @@ async function fetchTTS(text){
     headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "gpt-4o-mini-tts", voice: $("voice").value, input: text, response_format: "mp3",
-      instructions: "用中文普通话讲解，语气像热情、见多识广的城市导游，口语化，语速稍快，自然停顿。",
+      instructions: "用中文普通话讲解，语气像热情、见多识广的城市导游，口语化，语速快、节奏紧凑，停顿要短。",
     }),
   });
   if (!res.ok) throw new Error("tts " + res.status);
@@ -524,6 +531,7 @@ async function playNext(gen){
   if (gen !== speechGen) return;
   if (url) {
     player.src = url;
+    player.defaultPlaybackRate = player.playbackRate = speechRate(); player.preservesPitch = true;
     player.onended = () => { URL.revokeObjectURL(url); playNext(gen); };
     try { await player.play(); return; } catch (_) { /* 被系统拦截就退回系统朗读 */ }
   }
@@ -532,7 +540,7 @@ async function playNext(gen){
 function systemSpeak(text, done){
   if (!("speechSynthesis" in window)) return done();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = "zh-CN"; u.rate = 1.05; u.onend = done; u.onerror = done;
+  u.lang = "zh-CN"; u.rate = Math.min(2, 1.05 * speechRate()); u.onend = done; u.onerror = done;
   speechSynthesis.speak(u);
 }
 function silentWav(){ // 生成一小段静音，用来在用户点击时"解锁"自动播放
