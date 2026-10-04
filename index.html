@@ -296,10 +296,11 @@ function dirText(brg, heading){
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms))]);
 async function fetchWiki(lat, lon){
   const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=geosearch" +
-    `&ggscoord=${lat}%7C${lon}&ggsradius=800&ggslimit=40&prop=coordinates%7Cdescription%7Cextracts%7Cpageimages` +
+    `&ggscoord=${lat}%7C${lon}&ggsradius=800&ggslimit=40&colimit=max&prop=coordinates%7Cdescription%7Cextracts%7Cpageimages` +
     "&exintro=1&explaintext=1&exsentences=4&exlimit=20&piprop=thumbnail&pithumbsize=160&pilimit=40";
   const j = await (await fetch(u)).json();
-  return Object.values(j.query?.pages || {}).filter(p => p.coordinates).map(p => ({
+  const junk = /area code|radio station|television station|tv station|crash|disaster|accident|fire of|massacre|riot|^street in|zip code|postal code/i;
+  return Object.values(j.query?.pages || {}).filter(p => p.coordinates && !junk.test(p.description || "") && !/^Area code/.test(p.title)).map(p => ({
     name: p.title, lat: p.coordinates[0].lat, lon: p.coordinates[0].lon, src: "维基百科",
     kind: p.description || "", info: (p.extract || "").replace(/\s+/g, " ").slice(0, 600),
     thumb: p.thumbnail?.source || "", wiki: true,
