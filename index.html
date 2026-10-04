@@ -136,11 +136,18 @@ body.has-player .wrap{padding-bottom:110px}
   </header>
 
   <section id="setup" class="hide">
-    <div class="status show">填入 API key 开始使用。key 不会被保存，关掉或刷新页面后需要重新填写。</div>
+    <div class="status show">填入 API key 开始使用。key 只保存在这台手机的浏览器里，不会上传到别处，到期自动删除。</div>
     <label class="lbl" for="kA">Anthropic API key（讲稿）</label>
     <input class="field secret" id="kA" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="sk-ant-…">
     <label class="lbl" for="kO">OpenAI API key（语音，可不填，不填就用系统朗读）</label>
     <input class="field secret" id="kO" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="sk-proj-…">
+    <label class="lbl" for="keyTtl">在这台手机上记住 key</label>
+    <select class="field" id="keyTtl">
+      <option value="0">不记住（每次打开都要填）</option>
+      <option value="1">1 天</option>
+      <option value="7" selected>7 天</option>
+      <option value="30">30 天</option>
+    </select>
     <p class="err" id="keyErr" role="alert"></p>
     <button class="main-btn" id="saveKeys">开始</button>
   </section>
@@ -231,6 +238,7 @@ body.has-player .wrap{padding-bottom:110px}
         <option value="1.75">1.75 倍</option><option value="2">2.0 倍</option>
       </select>
       <div class="row"><button class="ghost" id="resetKeys">更换 API key</button></div>
+      <p class="hint" id="keyExp"></p>
       <p class="hint">自动讲解：每走出约 300 米且距上次至少 4 分钟会自动讲下一段，连续 12 段后暂停。页面要保持在前台，锁屏后定位会停。</p>
     </details>
 
@@ -273,8 +281,26 @@ for (const id of ["voice", "rate"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
   $(id).onchange = () => store.set("wg_" + id, $(id).value);
 }
-try { localStorage.removeItem("wg_kA"); localStorage.removeItem("wg_kO"); } catch (_) {}
-showSetup();
+/* key 记住到期：{a, o, exp} 存在本机浏览器，过期即删除 */
+function loadSavedKeys(){
+  try {
+    localStorage.removeItem("wg_kA"); localStorage.removeItem("wg_kO");   // 清掉旧版本留下的
+    const k = JSON.parse(localStorage.getItem("wg_keys") || "null");
+    if (!k || !k.a) return false;
+    if (!(k.exp > Date.now())) { localStorage.removeItem("wg_keys"); return false; }
+    store.set("wg_kA", k.a); if (k.o) store.set("wg_kO", k.o);
+    return true;
+  } catch (_) { return false; }
+}
+function updateKeyExp(){
+  let k = null; try { k = JSON.parse(localStorage.getItem("wg_keys") || "null"); } catch (_) {}
+  $("keyExp").textContent = k && k.exp > Date.now()
+    ? `key 已记住，到 ${new Date(k.exp).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} 自动删除。点「更换 API key」可以立即删除。`
+    : "key 没有保存在这台手机上，关掉页面后需要重新填写。";
+}
+{ const t = store.get("wg_ttl"); if (t) $("keyTtl").value = t; }
+if (loadSavedKeys()) { showApp(); updateKeyExp(); setTimeout(bootMap, 0); }
+else showSetup();
 $("saveKeys").onclick = () => {
   const clean = v => v.replace(/[\s\u200B-\u200D\uFEFF]/g, "");   // 去掉粘贴带进来的空格、换行、零宽字符
   const a = clean($("kA").value), o = clean($("kO").value);
@@ -282,6 +308,13 @@ $("saveKeys").onclick = () => {
   if (o && !o.startsWith("sk-")) { $("keyErr").textContent = "OpenAI key 应该以 sk- 开头。"; $("kO").focus(); return; }
   $("keyErr").textContent = "";
   store.set("wg_kA", a); if (o) store.set("wg_kO", o); else store.del("wg_kO");
+  const days = parseInt($("keyTtl").value, 10) || 0;
+  store.set("wg_ttl", String(days));
+  try {
+    if (days) localStorage.setItem("wg_keys", JSON.stringify({ a, o, exp: Date.now() + days * 864e5 }));
+    else localStorage.removeItem("wg_keys");
+  } catch (_) {}
+  updateKeyExp();
   $("kA").value = ""; $("kO").value = "";
   showApp();
   bootMap();
@@ -310,7 +343,7 @@ async function bootMap(){
 }
 $("recenter").onclick = () => { if (map && pos) { followed = true; map.setView([pos.coords.latitude, pos.coords.longitude], 17); } };
 $("rate").addEventListener("change", () => { player.defaultPlaybackRate = player.playbackRate = speechRate(); });
-$("resetKeys").onclick = () => { store.del("wg_kA"); store.del("wg_kO"); stopAuto(); showSetup(); };
+$("resetKeys").onclick = () => { store.del("wg_kA"); store.del("wg_kO"); try { localStorage.removeItem("wg_keys"); } catch (_) {} stopAuto(); showSetup(); };
 
 /* ---------- 定位 ---------- */
 function fmt(p){ const c = p.coords; return `${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}　误差约 ${Math.round(c.accuracy)} 米`; }
