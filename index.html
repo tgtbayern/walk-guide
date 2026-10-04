@@ -70,6 +70,10 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
 .pin span{margin-top:2px;max-width:96px;padding:1px 6px;border-radius:8px;background:rgba(255,255,255,.92);color:#14212B;font:600 11px/1.4 var(--latin);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(0,0,0,.2)}
 .pin.on img,.pin.on b{border-color:var(--star);transform:scale(1.15)}
 .pin.on span{background:var(--star);color:#fff}
+.cam{margin-top:22px;padding-top:16px;border-top:2px solid var(--line)}
+.cam-title{margin:0 0 4px;font-weight:700}
+.crop-wrap{margin-top:10px;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:#000;line-height:0}
+#cropCanvas{width:100%;touch-action:none;cursor:crosshair}
 .picker{margin-top:22px;padding-top:14px;border-top:2px dashed var(--line)}
 .picker-title{margin:0 0 8px;font-size:15px;color:var(--muted)}
 .pick{margin:0 8px 8px 0;padding:8px 14px;border:2px solid var(--line);border-radius:999px;background:transparent;color:var(--ink);font:15px var(--cjk);cursor:pointer;text-align:left}
@@ -147,6 +151,26 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
       <input class="field" id="question" type="text" placeholder="问导游：这栋楼谁设计的？" enterkeyhint="send">
       <button class="ghost" id="askBtn">问</button>
     </div>
+
+    <section class="cam">
+      <p class="cam-title">展板翻译</p>
+      <p class="hint">拍下博物馆墙上的说明文字，翻译成中文并朗读。</p>
+      <div class="row">
+        <button class="ghost" id="camBtn" type="button">📷 拍照翻译</button>
+        <button class="ghost" id="albumBtn" type="button">从相册选</button>
+      </div>
+      <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+      <input type="file" id="albumInput" accept="image/*" hidden>
+      <div id="cropBox" class="hide">
+        <p class="hint">手指拖动框选要翻译的部分；不框选就自动找出说明文字。</p>
+        <div class="crop-wrap"><canvas id="cropCanvas"></canvas></div>
+        <div class="row">
+          <button class="ghost" id="cropClear" type="button">清除选区</button>
+          <button class="ghost" id="cropRetake" type="button">重拍</button>
+        </div>
+        <button class="main-btn" id="cropGo" type="button">确定，翻译</button>
+      </div>
+    </section>
 
     <article class="story" id="story" aria-live="polite"></article>
 
@@ -462,6 +486,22 @@ function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，400 字以内。`;
 }
 
+function photoPrompt(b64){
+  return [
+    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: b64 } },
+    { type: "text", text: [
+      "这是游客在博物馆或展览里拍的墙上说明文字（展板、展签、标牌）。",
+      "找出其中的说明文字（标题、正文、展品信息），忽略画面里无关的东西，把它完整翻译成自然流畅的中文。",
+      "格式：",
+      "- 有标题的话，第一行写「## 中文标题（原文标题）」。",
+      "- 正文按原来的段落逐段翻译，每段一行，不要加符号。",
+      "- 人名、地名、作品名第一次出现时，中文后面用括号附原文。",
+      "- 展品信息（作者、年代、材质、尺寸、来源、藏品编号等）放在最后，每项一行，以「- 」开头。",
+      "只输出译文本身：不要输出原文，不要解释，不要说「这张图片」「这块展板」之类的话，不要加粗。看不清的部分直接跳过，不要猜。",
+    ].join("\n") },
+  ];
+}
+
 /* ---------- 渲染 ---------- */
 function esc(s){ return s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
 function render(text, question){
@@ -605,13 +645,13 @@ function errText(e){
 }
 
 /* ---------- 一次讲解 / 问答 ---------- */
-async function run({ auto = false, question = "", focus = "", picked = false } = {}){
+async function run({ auto = false, question = "", focus = "", picked = false, photo = "" } = {}){
   if (busy) return;
   busy = true; resetSpeech();
   $("go").disabled = true; $("askBtn").disabled = true;
   $("titleRow").classList.add("pulse");
 
-  if (!auto && !focus) {
+  if (!auto && !focus && !photo) {
     $("locState").textContent = "正在定位…";
     $("story").innerHTML = '<p class="thinking">正在获取你的位置…如果浏览器弹出定位授权，请点允许。</p>';
     try { pos = await locateBest(); $("locState").textContent = "已定位"; $("coords").textContent = fmt(pos); updateMe(); }
@@ -625,12 +665,12 @@ async function run({ auto = false, question = "", focus = "", picked = false } =
     }
   }
   if (auto) { autoCount++; if (navigator.vibrate) navigator.vibrate(120); }
-  if (pos && !focus) {
+  if (pos && !focus && !photo) {
     $("story").innerHTML = '<p class="thinking">正在查你附近有哪些建筑…</p>';
     await gatherNearby();
   }
 
-  $("story").innerHTML = `${question ? `<p class="q">你问：${esc(question)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}正在想…</p>`;
+  $("story").innerHTML = `${question ? `<p class="q">你问：${esc(question)}</p>` : ""}<p class="thinking">${auto ? "到新地方了，" : ""}${photo ? "正在识别和翻译…" : "正在想…"}</p>`;
   $("stopRow").classList.remove("hide");
   ctl = new AbortController();
 
@@ -652,11 +692,11 @@ async function run({ auto = false, question = "", focus = "", picked = false } =
   };
 
   try {
-    const prompt = question ? askPrompt(question) : tourPrompt(focus, picked);
+    const prompt = photo ? photoPrompt(photo) : question ? askPrompt(question) : tourPrompt(focus, picked);
     const text = await streamClaude(prompt, t => { render(t, question); flush(t, false); }, ctl.signal);
     render(text, question); flush(text, true);
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
-    if (!question) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked) showPicker(); }
+    if (!question && !photo) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked) showPicker(); }
   } catch (e) {
     const msg = errText(e);
     if (msg) $("story").insertAdjacentHTML("beforeend", `<p class="err">${esc(msg)}</p>`);
@@ -748,6 +788,69 @@ $("voiceBtn").onclick = () => {
 const ask = () => { const q = $("question").value.trim(); if (!q) return; $("question").value = ""; unlockAudio(); run({ question: q }); };
 $("askBtn").onclick = ask;
 $("question").addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
+
+/* ---------- 展板翻译：拍照 → 框选 → 翻译 ---------- */
+let camImg = null, sel = null, dragFrom = null;
+function openPhoto(file){
+  if (!file) return;
+  const img = new Image();
+  img.onload = () => { camImg = img; sel = null; $("cropBox").classList.remove("hide"); drawCrop(); $("cropBox").scrollIntoView({ behavior: "smooth", block: "start" }); };
+  img.src = URL.createObjectURL(file);
+}
+function drawCrop(){
+  if (!camImg) return;
+  const c = $("cropCanvas"), w = c.clientWidth || 340, dpr = window.devicePixelRatio || 1;
+  const h = Math.round(w * camImg.naturalHeight / camImg.naturalWidth);
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + "px";
+  const g = c.getContext("2d"), k = c.width / camImg.naturalWidth;
+  g.drawImage(camImg, 0, 0, c.width, c.height);
+  if (sel) {
+    const [x, y, sw, sh] = [sel.x * k, sel.y * k, sel.w * k, sel.h * k];
+    g.fillStyle = "rgba(0,0,0,.55)";
+    g.fillRect(0, 0, c.width, y); g.fillRect(0, y + sh, c.width, c.height - y - sh);
+    g.fillRect(0, y, x, sh); g.fillRect(x + sw, y, c.width - x - sw, sh);
+    g.strokeStyle = "#41B6E6"; g.lineWidth = 3 * dpr; g.strokeRect(x, y, sw, sh);
+  }
+}
+function toImgXY(e){
+  const c = $("cropCanvas"), r = c.getBoundingClientRect(), k = camImg.naturalWidth / r.width;
+  return { x: Math.max(0, Math.min(camImg.naturalWidth, (e.clientX - r.left) * k)), y: Math.max(0, Math.min(camImg.naturalHeight, (e.clientY - r.top) * k)) };
+}
+$("cropCanvas").addEventListener("pointerdown", e => { if (!camImg) return; e.preventDefault(); $("cropCanvas").setPointerCapture(e.pointerId); dragFrom = toImgXY(e); });
+$("cropCanvas").addEventListener("pointermove", e => {
+  if (!dragFrom) return;
+  const p = toImgXY(e);
+  sel = { x: Math.min(dragFrom.x, p.x), y: Math.min(dragFrom.y, p.y), w: Math.abs(p.x - dragFrom.x), h: Math.abs(p.y - dragFrom.y) };
+  drawCrop();
+});
+$("cropCanvas").addEventListener("pointerup", () => {
+  dragFrom = null;
+  if (sel && (sel.w < camImg.naturalWidth * 0.04 || sel.h < camImg.naturalHeight * 0.03)) { sel = null; drawCrop(); }   // 太小当作误触
+});
+window.addEventListener("resize", drawCrop);
+function photoBase64(){
+  const src = sel || { x: 0, y: 0, w: camImg.naturalWidth, h: camImg.naturalHeight };
+  const scale = Math.min(1, 1568 / Math.max(src.w, src.h));   // 压到长边 1568 像素，识别够用、上传更快
+  const c = document.createElement("canvas");
+  c.width = Math.round(src.w * scale); c.height = Math.round(src.h * scale);
+  c.getContext("2d").drawImage(camImg, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
+  return c.toDataURL("image/jpeg", 0.85).split(",")[1];
+}
+$("camBtn").onclick = () => { unlockAudio(); $("camInput").value = ""; $("camInput").click(); };
+$("albumBtn").onclick = () => { unlockAudio(); $("albumInput").value = ""; $("albumInput").click(); };
+$("camInput").onchange = e => openPhoto(e.target.files[0]);
+$("albumInput").onchange = e => openPhoto(e.target.files[0]);
+$("cropClear").onclick = () => { sel = null; drawCrop(); };
+$("cropRetake").onclick = () => $("camBtn").click();
+$("cropGo").onclick = async () => {
+  if (!camImg) return;
+  unlockAudio();
+  const b64 = photoBase64();
+  $("cropBox").classList.add("hide");
+  if (busy) { ctl?.abort(); resetSpeech(); for (let i = 0; i < 30 && busy; i++) await new Promise(r => setTimeout(r, 100)); }
+  $("story").scrollIntoView({ behavior: "smooth", block: "start" });
+  run({ photo: b64 });
+};
 </script>
 </body>
 </html>
