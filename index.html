@@ -756,13 +756,15 @@ function resetSpeech(){
   try { player.pause(); } catch (_) {}
   if ("speechSynthesis" in window) speechSynthesis.cancel();
   for (const it of track) if (it.url) URL.revokeObjectURL(it.url);
-  track = []; cur = -1; curDone = false; updatePlayer();
+  track = []; cur = -1; curDone = false; useSystem = false; ttsNoted = false; ttsWaiting.length = 0; updatePlayer();
 }
 function enqueueSpeech(chunk){
   if (!voiceOn) return;
   const text = speakable(chunk); if (!text.replace(/[。\s]/g, "")) return;
   const item = { text, url: null };
-  item.audio = fetchTTS(text).then(u => (item.url = u)).catch(e => { ttsNote(e); return null; });   // 立即开始合成，播放时按顺序取
+  item.audio = (useSystem ? Promise.resolve(null) : ttsQueued(text))
+    .then(u => (item.url = u))
+    .catch(e => { useSystem = true; ttsNote(e); return null; });   // 立即排队合成，播放时按顺序取
   track.push(item); updatePlayer();
   if (!playing && !paused) playIndex(cur + 1);
 }
@@ -771,6 +773,29 @@ function ttsNote(e){
   if (ttsNoted) return; ttsNoted = true;
   const why = e?.message === "tts 401" ? "OpenAI key 无效" : e?.message === "tts 429" ? "OpenAI 额度不足或请求太频繁" : "OpenAI 语音合成失败（" + (e?.message || "网络问题") + "）";
   $("story").insertAdjacentHTML("beforeend", `<p class="err">${why}，已改用手机自带朗读。自带朗读在静音模式下没有声音，请把手机侧边的静音开关拨开。</p>`);
+}
+let useSystem = false, ttsActive = 0;
+const ttsWaiting = [];
+function ttsQueued(text){
+  return new Promise((resolve, reject) => {
+    const start = async () => {
+      ttsActive++;
+      try { resolve(await fetchTTSRetry(text)); } catch (e) { reject(e); }
+      finally { ttsActive--; const nxt = ttsWaiting.shift(); if (nxt) nxt(); }
+    };
+    if (ttsActive < 2) start(); else ttsWaiting.push(start);
+  });
+}
+async function fetchTTSRetry(text){
+  for (let attempt = 0; ; attempt++) {
+    try { return await fetchTTS(text); }
+    catch (e) {
+      const code = parseInt(String(e.message).replace(/\D/g, ""), 10);
+      const retryable = e instanceof TypeError || code === 429 || code >= 500;
+      if (!retryable || attempt >= 3) throw e;
+      await new Promise(r => setTimeout(r, (e.retryAfter || 0.8 * (attempt + 1)) * 1000));   // 限流时稍等再试
+    }
+  }
 }
 async function fetchTTS(text){
   const key = store.get("wg_kO"); if (!key) return null;
@@ -782,7 +807,7 @@ async function fetchTTS(text){
       instructions: "用中文普通话讲解，语气像热情、见多识广的城市导游，口语化，语速快、节奏紧凑，停顿要短。",
     }),
   });
-  if (!res.ok) throw new Error("tts " + res.status);
+  if (!res.ok) { const e = new Error("tts " + res.status); e.retryAfter = parseFloat(res.headers.get("retry-after")) || 0; throw e; }
   return URL.createObjectURL(await res.blob());
 }
 function stopNow(){
@@ -808,7 +833,10 @@ async function playIndex(i, frac = 0){
     player.onended = next;
     player.onloadedmetadata = frac > 0 ? () => { if (isFinite(player.duration)) player.currentTime = player.duration * frac; } : null;
     mode = "audio";
-    try { await player.play(); updatePlayer(); return; } catch (_) { /* 被系统拦截就退回系统朗读 */ }
+    try { await player.play(); updatePlayer(); return; } catch (_) {}
+    await new Promise(r => setTimeout(r, 250));
+    if (g !== speechGen || paused) return;
+    try { await player.play(); updatePlayer(); return; } catch (_) { /* 还是被拦截才退回系统朗读 */ }
   }
   mode = "speech"; speechStart = Date.now(); updatePlayer();
   systemSpeak(item.text, next);
