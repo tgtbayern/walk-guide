@@ -966,22 +966,35 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
   $("stopRow").classList.remove("hide");
   ctl = new AbortController();
 
-  // 已送去合成的位置：每写完一整行要点就先送去合成；标题行和下一条要点一起读
-  let spokenUpTo = 0;
+  // 边生成边切成小段送去合成：第一段很短（尽快开口），后面逐段变长（减少段间停顿）。
+  // 只在句末（。！？!?）或非标题行的换行处切，标题跟着下一句一起读。
+  let spokenUpTo = 0, chunksSent = 0;
+  const balanced = t => (t.split("（").length === t.split("）").length) && (t.split("(").length === t.split(")").length);   // 不在括号中间切
   const flush = (text, final) => {
-    const lines = text.slice(spokenUpTo).split("\n");
-    const complete = final ? lines : lines.slice(0, -1);   // 最后一行可能还没写完
-    let ready = "", pending = "", consumed = 0, committed = 0;
-    for (const l of complete) {
-      consumed += l.length + 1;
-      if (/^\s*##\s/.test(l)) { pending += l + "\n"; continue; }
-      if (!l.trim()) continue;
-      ready += pending + l + "\n"; pending = ""; committed = consumed;
+    for (;;) {
+      const rest = text.slice(spokenUpTo);
+      if (!rest.trim()) { spokenUpTo = text.length; return; }
+      const target = chunksSent === 0 ? 24 : Math.min(260, 70 + 60 * chunksSent);
+      let cut = -1;
+      for (let k = 0; k < rest.length; k++) {
+        const ch = rest[k];
+        let end = -1;
+        if ("。！？!?".includes(ch) || (chunksSent === 0 && "，；,".includes(ch))) end = k + 1;   // 第一段允许在逗号处切，开口更快
+        else if (ch === "\n") {
+          const lineStart = rest.lastIndexOf("\n", k - 1) + 1;
+          if (!/^\s*##\s/.test(rest.slice(lineStart, k))) end = k + 1;
+        }
+        if (end > 0 && rest.slice(0, end).trim().length >= target && balanced(rest.slice(0, end))) { cut = end; break; }
+      }
+      if (cut < 0) {
+        if (!final) return;
+        cut = rest.length;
+      }
+      enqueueSpeech(rest.slice(0, cut));
+      spokenUpTo += cut; chunksSent++;
     }
-    if (final && pending) ready += pending;
-    spokenUpTo += committed;
-    if (ready.trim()) enqueueSpeech(ready);
   };
+
 
   try {
     const userContent = follow ? followText(pane, follow) : photo ? photoPrompt(photo) : question ? askPrompt(question) : tourPrompt(focus, picked);
