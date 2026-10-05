@@ -292,6 +292,11 @@ textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
       <label class="lbl" for="customPrompt">自定义要求（讲解、展板和追问都会带上）</label>
       <textarea class="field" id="customPrompt" rows="4" placeholder="例如：多讲和中国有关的联系；提到电影时告诉我片名和年份；不用讲建筑风格"></textarea>
       <p class="hint" id="styleSaved">风格和自定义要求会自动保存，对下一次讲解生效。</p>
+      <label class="lbl" for="ttsModel">语音引擎（OpenAI）</label>
+      <select class="field" id="ttsModel">
+        <option value="tts-1" selected>快速（tts-1，默认）</option>
+        <option value="gpt-4o-mini-tts">更自然（gpt-4o-mini-tts，较慢）</option>
+      </select>
       <label class="lbl" for="voice">语音音色（OpenAI）</label>
       <select class="field" id="voice">
         <option value="nova">nova</option><option value="coral">coral</option><option value="alloy">alloy</option>
@@ -365,7 +370,7 @@ const player = new Audio(); player.preload = "auto"; player.setAttribute("playsi
 /* ---------- 初始化 ---------- */
 function showApp(){ $("setupWrap").classList.add("hide"); $("app").classList.remove("hide"); if (map) setTimeout(() => map.invalidateSize(), 50); }
 function showSetup(){ $("app").classList.add("hide"); $("setupWrap").classList.remove("hide"); $("setup").classList.remove("hide"); }
-for (const id of ["voice", "rate", "stylePreset"]) {
+for (const id of ["voice", "rate", "stylePreset", "ttsModel"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
   $(id).onchange = () => store.set("wg_" + id, $(id).value);
 }
@@ -797,7 +802,7 @@ function ttsQueued(text){
       try { resolve(await fetchTTSRetry(text)); } catch (e) { reject(e); }
       finally { ttsActive--; const nxt = ttsWaiting.shift(); if (nxt) nxt(); }
     };
-    if (ttsActive < 2) start(); else ttsWaiting.push(start);
+    if (ttsActive < 3) start(); else ttsWaiting.push(start);
   });
 }
 async function fetchTTSRetry(text){
@@ -817,8 +822,8 @@ async function fetchTTS(text){
     method: "POST",
     headers: { "Authorization": `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "gpt-4o-mini-tts", voice: $("voice").value, input: text, response_format: "mp3",
-      instructions: "用中文普通话讲解，语气像热情、见多识广的城市导游，口语化，语速快、节奏紧凑，停顿要短。",
+      model: $("ttsModel").value, voice: $("voice").value, input: text, response_format: "mp3",
+      ...($("ttsModel").value === "gpt-4o-mini-tts" ? { instructions: "用中文普通话讲解，语气像热情、见多识广的城市导游，口语化，语速快、节奏紧凑，停顿要短。" } : {}),
     }),
   });
   if (!res.ok) { const e = new Error("tts " + res.status); e.retryAfter = parseFloat(res.headers.get("retry-after")) || 0; throw e; }
@@ -846,7 +851,7 @@ async function playIndex(i, frac = 0){
     player.defaultPlaybackRate = player.playbackRate = speechRate(); player.preservesPitch = true;
     player.onended = next;
     player.onloadedmetadata = frac > 0 ? () => { if (isFinite(player.duration)) player.currentTime = player.duration * frac; } : null;
-    mode = "audio"; if (!perf.audio) { perf.audio = performance.now(); perf.how = "OpenAI"; }
+    mode = "audio"; if (!perf.audio) { perf.audio = performance.now(); perf.how = "OpenAI " + $("ttsModel").value; }
     try { await player.play(); updatePlayer(); return; } catch (_) {}
     await new Promise(r => setTimeout(r, 250));
     if (g !== speechGen || paused) return;
