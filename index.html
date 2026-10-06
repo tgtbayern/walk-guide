@@ -102,6 +102,11 @@ label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
 .pl-fill::after{content:"";position:absolute;right:-7px;top:-5px;width:16px;height:16px;border-radius:50%;background:var(--sky);box-shadow:0 1px 3px rgba(0,0,0,.3)}
 .pl-label{flex:none;min-width:48px;text-align:right;font:600 13px var(--latin);color:var(--muted)}
 body.has-player .wrap{padding-bottom:110px}
+.turn-actions{display:flex;flex-wrap:wrap;gap:0;margin-top:10px}
+.gallery{display:flex;gap:8px;overflow-x:auto;margin-top:6px}
+.gallery img{flex:none;height:96px;border-radius:8px;border:2px solid var(--line);cursor:zoom-in}
+.fullimg{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
+.fullimg img{max-width:100%;max-height:100%;object-fit:contain}
 .picker{margin-top:22px;padding-top:14px;border-top:2px dashed var(--line)}
 .picker-title{margin:0 0 8px;font-size:15px;color:var(--muted)}
 .pick{margin:0 8px 8px 0;padding:8px 14px;border:2px solid var(--line);border-radius:999px;background:transparent;color:var(--ink);font:15px var(--cjk);cursor:pointer;text-align:left}
@@ -981,6 +986,7 @@ function silentWav(){ // 生成一小段静音，用来在用户点击时"解锁
   return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
 }
 function unlockAudio(){
+  if (playing) return;   // 正在读：音频早就解锁过了，别打断它
   player.src = silentWav(); player.play().catch(() => {});
   if ("speechSynthesis" in window) { const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }
 }
@@ -1033,7 +1039,7 @@ function errText(e){
 }
 
 /* ---------- 一次讲解 / 问答 ---------- */
-async function run({ auto = false, question = "", focus = "", picked = false, photo = "", follow = "" } = {}){
+async function run({ auto = false, question = "", focus = "", picked = false, photo = "", follow = "", photoUrls = [] } = {}){
   if (busy) return;
   busy = true; resetSpeech();
   perf = { t0: performance.now(), kind: photo ? "展板" : follow ? "追问" : question ? "问导游" : "讲解" };
@@ -1117,6 +1123,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
     if (auto) { const m = text.match(/^##\s*(.+)$/m); lastAuto = { title: m ? m[1].replace(/（[^）]*）/g, "").trim() : "", text: text.replace(/^##.*$/m, "") }; }
     if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked && !auto) showPicker(); }
+    addTurnActions(turn, text, photo, photoUrls);
   } catch (e) {
     const msg = errText(e);
     if (msg) $("story").insertAdjacentHTML("beforeend", `<p class="err">${esc(msg)}</p>`);
@@ -1299,11 +1306,25 @@ function shotBase64(sh){
   c.getContext("2d").drawImage(img, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
   return c.toDataURL("image/jpeg", 0.85).split(",")[1];
 }
-$("camBtn").onclick = () => { unlockAudio(); $("camInput").value = ""; $("camInput").click(); };
+var resumeAfterCam = false;
+function resumeIfInterrupted(){
+  if (!resumeAfterCam) return;
+  resumeAfterCam = false;
+  if (!playing || paused) return;
+  setTimeout(() => {
+    if (!playing || paused) return;
+    if (mode === "audio" && player.paused) player.play().catch(() => {});
+    else if (mode === "speech" && "speechSynthesis" in window && !speechSynthesis.speaking) { stopNow(); playIndex(Math.max(cur, 0)); }
+  }, 400);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") resumeIfInterrupted(); });
+window.addEventListener("focus", resumeIfInterrupted);
+$("camBtn").onclick = () => { resumeAfterCam = playing && !paused; unlockAudio(); $("camInput").value = ""; $("camInput").click(); };
 $("trayMore").onclick = () => $("camBtn").click();
-$("albumBtn").onclick = () => { unlockAudio(); $("albumInput").value = ""; $("albumInput").click(); };
-$("camInput").onchange = e => addFiles([...e.target.files]);
-$("albumInput").onchange = e => addFiles([...e.target.files]);
+$("albumBtn").onclick = () => { resumeAfterCam = playing && !paused; unlockAudio(); $("albumInput").value = ""; $("albumInput").click(); };
+$("camInput").onchange = e => { addFiles([...e.target.files]); resumeIfInterrupted(); };
+$("camInput").addEventListener("cancel", resumeIfInterrupted);
+$("albumInput").onchange = e => { addFiles([...e.target.files]); resumeIfInterrupted(); };
 $("cropClear").onclick = () => { const sh = curShot(); if (sh) { sh.sel = null; drawCrop(); } };
 $("cropDelete").onclick = () => { if (editing >= 0) removeShot(editing); };
 $("cropDone").onclick = () => closeEditor();
@@ -1312,10 +1333,11 @@ $("cropGo").onclick = async () => {
   const ready = shots.filter(sh => sh.img.naturalWidth);
   if (!ready.length) return;
   unlockAudio();
-  const list = ready.map(shotBase64);
-  closeEditor();
+  const list = ready.map(shotBase64), urls = ready.map(sh => sh.url);
+  shots = []; closeEditor();   // 开始讲了，托盘清空；照片留在这段讲解下面
+  $("trayHint").textContent = "";
   if (busy) { ctl?.abort(); resetSpeech(); for (let i = 0; i < 30 && busy; i++) await new Promise(r => setTimeout(r, 100)); }
-  run({ photo: list });
+  run({ photo: list, photoUrls: urls });
 };
 
 /* ---------- 朗读控制条 ---------- */
@@ -1337,6 +1359,36 @@ $("plRate").onclick = () => {
   $("rate").dispatchEvent(new Event("change"));   // 同步保存设置、并立即改变正在播放的速度
   updatePlayer();
 };
+
+/* ---------- 讲解下面的按钮 ---------- */
+function speakText(text){
+  resetSpeech(); unlockAudio();
+  const parts = text.split("\n").filter(l => l.trim() && !/^##\s/.test(l)).join("\n").match(/[^。！？!?\n]+[。！？!?]*\n?/g) || [];
+  let buf = "";
+  for (const p of parts) { buf += p; if (buf.length >= 120) { enqueueSpeech(buf); buf = ""; } }
+  if (buf.trim()) enqueueSpeech(buf);
+}
+function addTurnActions(turn, text, photo, urls){
+  const row = document.createElement("div");
+  row.className = "turn-actions";
+  const btn = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "pick"; b.textContent = label; b.onclick = fn; row.appendChild(b); };
+  btn("再听一遍", () => speakText(text));
+  if (photo && photo.length) {
+    btn("重新讲解", () => { if (busy) { ctl?.abort(); resetSpeech(); } setTimeout(() => run({ photo, photoUrls: urls }), busy ? 300 : 0); });
+    if (urls && urls.length) {
+      const gal = document.createElement("div"); gal.className = "gallery hide";
+      urls.forEach(u => { const im = document.createElement("img"); im.src = u; im.alt = ""; im.onclick = () => showFull(u); gal.appendChild(im); });
+      btn(`看照片（${urls.length}）`, () => gal.classList.toggle("hide"));
+      turn.appendChild(row); turn.appendChild(gal); return;
+    }
+  }
+  turn.appendChild(row);
+}
+function showFull(u){
+  const o = document.createElement("div"); o.className = "fullimg";
+  o.innerHTML = `<img src="${u}" alt="">`; o.onclick = () => o.remove();
+  document.body.appendChild(o);
+}
 
 /* ---------- 底部标签栏 ---------- */
 function showTab(k){
