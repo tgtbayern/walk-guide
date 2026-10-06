@@ -310,7 +310,7 @@ textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
       <div class="row"><button class="ghost" id="resetKeys">更换 API key</button></div>
       <p class="hint" id="keyExp"></p>
       <p class="hint" id="perfLine"></p>
-      <p class="hint">自动讲解：每走出约 300 米且距上次至少 4 分钟会自动讲下一段，连续 12 段后暂停。App 要保持在前台，锁屏后定位会停。</p>
+      <p class="hint">自动讲解：每讲完一段就马上接着讲附近还没讲过的、最重要的一个；附近都讲完了，就等你走出约 150 米再继续。连续 30 段后暂停。App 要保持在前台，锁屏后定位会停。</p>
       <p class="foot">讲解由 AI 结合公开资料生成，具体数字和年份请以权威资料为准。</p>
     </section>
   </main>
@@ -352,7 +352,7 @@ function newTurn(k, fresh){
 }
 function curTurn(){ const t = threads[writeTo]; return t.turn || newTurn(writeTo, false); }
 const $ = id => id === "story" ? curTurn() : document.getElementById(id);
-const AUTO_DIST = 300, AUTO_GAP = 4 * 60 * 1000, AUTO_MAX = 12;
+const AUTO_MAX = 30;
 const keys = { wg_kA: "", wg_kO: "" };   // API key 只放在内存里，关掉或刷新页面就没了
 const store = {
   get: k => k in keys ? keys[k] : (() => { try { return localStorage.getItem(k) || ""; } catch (_) { return ""; } })(),
@@ -652,6 +652,7 @@ const FORMAT_TOUR = [
   "每样东西不一样，就用最适合它的讲法：可以是一段话，也可以是几条要点；长短完全看内容：重要、内容丰富的就展开讲透，没什么可说的就一两句带过，不要为了凑字数或压字数改变内容。",
   "唯一的格式要求：每个话题第一行写「## 标题（方向，大约距离）」；话题不对应具体地点时，括号里写它和这里的关系，比如（就在这条街上）。不要用加粗。",
 ].join("\n");
+var runningAuto = false;
 function tourPrompt(focus, picked){
   const p = focus && nearby.concat(places).find(x => x.name === focus);
   const where = p ? `（离他约 ${p.dist} 米，${p.dir}）` : "";
@@ -659,7 +660,7 @@ function tourPrompt(focus, picked){
     ? `\n\n游客在地图上点了「${focus}」${where}，想听它的讲解。这次只讲这一个地方：直接照下面的格式写一个「## 」标题加 3–5 条要点。如果它和附近其他地方或之前讲过的地方有关联，可以点出来。`
     : `\n\n游客说之前讲错了地方，他眼前其实是「${focus}」${where}。这次只讲这一个地方。`;
   if (p && !nearby.includes(p)) nearby = [p, ...nearby].slice(0, 15);   // 确保这个地方的资料在清单里
-  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}${styleExtra()}`;
+  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}${runningAuto ? "\n\n这是边走边听的连续讲解：这次只讲 1 个话题——附近还没讲过的里面最重要的那一个。如果附近值得讲的都已经讲过了，只输出 NOTHING_NEW 这一个词，别的什么都不要写。" : ""}${styleExtra()}`;
 }
 function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，长短看问题需要。${styleExtra()}`;
@@ -844,7 +845,7 @@ async function playIndex(i, frac = 0){
   const next = () => {
     if (g !== speechGen) return;
     if (cur + 1 < track.length) playIndex(cur + 1);
-    else { playing = false; mode = "idle"; curDone = true; updatePlayer(); }
+    else { playing = false; mode = "idle"; curDone = true; updatePlayer(); setTimeout(autoNext, 600); }
   };
   if (url) {
     player.src = url;
@@ -992,7 +993,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
   perf = { t0: performance.now(), kind: photo ? "展板" : follow ? "追问" : question ? "问导游" : "讲解" };
   const pane = follow ? (activeTab === "photo" ? "photo" : "map") : (photo ? "photo" : "map");
   writeTo = pane;
-  const turn = newTurn(pane, !follow);
+  const turn = newTurn(pane, !follow && !auto);
   if (follow) setTimeout(() => turn.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
   else document.getElementById(pane === "map" ? "sheet-map" : "pane-photo").scrollTo({ top: 0, behavior: "smooth" });
   $("go").disabled = true; $("askBtn").disabled = true;
@@ -1052,15 +1053,23 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
 
 
   try {
+    runningAuto = auto && !focus;
     const userContent = follow ? followText(pane, follow) : photo ? photoPrompt(photo) : question ? askPrompt(question) : tourPrompt(focus, picked);
     const prompt = follow ? [...threads[pane].msgs, { role: "user", content: userContent }] : userContent;
     const q = question || follow;
     perf.ask = performance.now();
-    const text = await streamClaude(prompt, t => { if (!perf.first) perf.first = performance.now(); render(t, q); flush(t, false); }, ctl.signal);
+    const nothing = t => auto && t.trim().length <= 11 && "NOTHING_NEW".startsWith(t.trim());
+    const text = await streamClaude(prompt, t => { if (!perf.first) perf.first = performance.now(); if (nothing(t)) return; render(t, q); flush(t, false); }, ctl.signal);
+    if (auto && text.trim() === "NOTHING_NEW") {
+      turn.remove(); threads[pane].turn = null; waitingMove = true;
+      status("附近值得讲的都讲完了。往前走一走，走出约 150 米会接着讲。");
+      return done();
+    }
     render(text, q); flush(text, true);
+    if (auto) threads[pane].msgs = [];
     threads[pane].msgs.push({ role: "user", content: userContent }, { role: "assistant", content: text });
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
-    if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked) showPicker(); }
+    if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked && !auto) showPicker(); }
   } catch (e) {
     const msg = errText(e);
     if (msg) $("story").insertAdjacentHTML("beforeend", `<p class="err">${esc(msg)}</p>`);
@@ -1074,6 +1083,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     $("stopRow").classList.add("hide");
     $("titleRow").classList.remove("pulse");
     if (autoOn && autoCount >= AUTO_MAX) { stopAuto(); status(`已经连续自动讲了 ${AUTO_MAX} 段，先暂停。想继续就再打开自动讲解。`); }
+    else if (autoOn && auto && !voiceOn && !waitingMove) setTimeout(autoNext, Math.max(8000, curTurn().textContent.length * 120));
   }
 }
 
@@ -1114,12 +1124,14 @@ function onMove(p){
   $("coords").textContent = fmt(p);
   updateMe();
   if (!busy && (!placesFrom || dist(placesFrom, p.coords) > 250)) { placesFrom = p.coords; refreshPlaces(); }   // 走远了就刷新地图上的景点
-  if (!autoOn || busy) return;
-  if (!lastTold) { status(""); run({ auto: true }); return; }
-  const d = dist(lastTold, p.coords), wait = AUTO_GAP - (Date.now() - lastToldAt);
-  if (d >= AUTO_DIST && wait <= 0 && document.visibilityState === "visible") { status(""); run({ auto: true }); return; }
-  if (d < AUTO_DIST) status(`再走约 ${Math.round(AUTO_DIST - d)} 米，自动讲下一段。`);
-  else status(`已经走出 ${Math.round(d)} 米，约 ${Math.ceil(wait / 60000)} 分钟后自动讲下一段。`);
+  // 附近都讲完了在等你走：走出 150 米就接着讲
+  if (autoOn && waitingMove && !busy && !playing && (!lastTold || dist(lastTold, p.coords) >= 150)) { waitingMove = false; status(""); run({ auto: true }); }
+}
+var waitingMove = false;
+function autoNext(){
+  if (!autoOn || busy || playing || paused || waitingMove) return;
+  if (!pos) { waitingMove = true; status("正在获取位置，拿到后马上开讲。"); return; }
+  status(""); run({ auto: true });
 }
 async function keepAwake(){ try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch (_) { wakeLock = null; } }
 document.addEventListener("visibilitychange", () => { if (autoOn && document.visibilityState === "visible") keepAwake(); });
@@ -1127,9 +1139,10 @@ document.addEventListener("visibilitychange", () => { if (autoOn && document.vis
 function startAuto(){
   if (!("geolocation" in navigator) || !window.isSecureContext) { status(geoErr({})); return; }
   autoOn = true; autoCount = 0;
+  waitingMove = false;
   unlockAudio(); keepAwake(); startWatch();
   $("autoBtn").setAttribute("aria-pressed", "true"); $("autoBtn").textContent = "自动讲解：开";
-  status("正在获取位置，拿到后马上开讲。");
+  if (!busy && !playing) autoNext(); else status("这段讲完就接着自动讲。");
 }
 function stopAuto(){
   autoOn = false;
