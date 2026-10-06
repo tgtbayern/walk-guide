@@ -489,11 +489,39 @@ function bearing(a, b){
   return (d(Math.atan2(y, x)) + 360) % 360;
 }
 const COMPASS = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"];
+const trail = [];
+function recordTrail(p){
+  trail.push({ t: Date.now(), latitude: p.coords.latitude, longitude: p.coords.longitude });
+  while (trail.length && Date.now() - trail[0].t > 5 * 60e3) trail.shift();
+}
+function motion(){
+  if (!pos || trail.length < 2) return { moving: false };
+  const now = Date.now(), cur = pos.coords;
+  const past = trail.find(x => now - x.t <= 90e3) || trail[0];   // 大约一分半钟前的位置
+  const d = dist(past, cur), dt = (now - past.t) / 1000;
+  if (d < 25 || dt < 10) return { moving: false };
+  return { moving: true, bearing: bearing({ lat: past.latitude, lon: past.longitude }, { lat: cur.latitude, lon: cur.longitude }), meters: Math.round(d), speed: d / dt };
+}
+function travelHeading(){
+  const m = motion();
+  if (m.moving) return m.bearing;
+  return pos && pos.coords.speed > 0.5 && pos.coords.heading != null && !isNaN(pos.coords.heading) ? pos.coords.heading : null;
+}
+function streetName(){
+  const parts = (address || "").split(",").map(x => x.trim());
+  return parts.find(x => /\b(Street|Avenue|Road|Boulevard|Drive|Way|Place|Lane|Parkway|Court|Plaza|Walk|Trail|Bridge)\b/i.test(x)) || "";
+}
+function walkText(){
+  const m = motion(), st = streetName();
+  if (!m.moving) return `游客现在停在原地${st ? "，在 " + st + " 上" : ""}。`;
+  const pace = m.speed > 2.2 ? "在坐车或骑车，移动得很快" : m.speed > 1.6 ? "走得比较快" : "在慢慢走";
+  return `游客正${st ? "沿着 " + st + " " : ""}往${COMPASS[Math.round(m.bearing / 45) % 8]}${pace}，过去一分多钟走了约 ${m.meters} 米。`;
+}
 function dirText(brg, heading){
   let t = "在你" + COMPASS[Math.round(brg / 45) % 8] + "边";
   if (heading != null && !isNaN(heading)) {
     const rel = (brg - heading + 360) % 360;
-    t += "，" + (rel < 30 || rel > 330 ? "正前方" : rel < 150 ? "右手边" : rel <= 210 ? "身后" : "左手边");
+    t += "，" + (rel < 30 || rel > 330 ? "正前方" : rel < 150 ? "右手边" : rel <= 210 ? "身后（已经走过了）" : "左手边");
   }
   return t;
 }
@@ -558,7 +586,7 @@ function applyNearby(raw){
   const { latitude: lat, longitude: lon, heading } = pos.coords;
   const all = raw.map(p => ({ ...p,
     dist: Math.round(dist({ latitude: lat, longitude: lon }, { latitude: p.lat, longitude: p.lon })),
-    dir: dirText(bearing({ lat, lon }, p), pos.coords.speed > 0.5 ? heading : null) })).sort((a, b) => a.dist - b.dist);
+    dir: dirText(bearing({ lat, lon }, p), travelHeading()) })).sort((a, b) => a.dist - b.dist);
   nearby = all.slice(0, 14);
   places = all.filter(p => p.wiki || /tourism|historic|attraction|museum|monument|artwork|theatre|place_of_worship/.test(p.kind)).slice(0, 35);
   placesFrom = { latitude: lat, longitude: lon };
@@ -652,7 +680,18 @@ const FORMAT_TOUR = [
   "每样东西不一样，就用最适合它的讲法：可以是一段话，也可以是几条要点；长短完全看内容：重要、内容丰富的就展开讲透，没什么可说的就一两句带过，不要为了凑字数或压字数改变内容。",
   "唯一的格式要求：每个话题第一行写「## 标题（方向，大约距离）」；话题不对应具体地点时，括号里写它和这里的关系，比如（就在这条街上）。不要用加粗。",
 ].join("\n");
-var runningAuto = false;
+var runningAuto = false, lastAuto = null, autoSeq = 0;
+function autoGuideText(){
+  const prev = lastAuto ? `上一段讲的是「${lastAuto.title}」，大意：${lastAuto.text.replace(/\s+/g, " ").slice(0, 160)}……` : "这是这一路的第一段。";
+  return "\n\n" + [
+    "这是边走边听的连续讲解，你就像一个陪在游客身边一起走的真人导游。",
+    walkText(), prev,
+    "这一段只讲 1 个话题：附近还没讲过的里面最重要的那一个。优先讲正前方、或马上就会从身边经过的地方；身后已经走过的不要再回头讲。",
+    "像导游一样自然地接着说，不要像重新开始一样：第一行先用一句话过渡，可以接着上一段，也可以从游客正在走的路说起，比如「顺着这条街再往前走一点……」「我们右手边这栋楼……」「说到刚才那位建筑师……」；然后另起一行写「## 标题」，再接着讲。标题不会被念出来，所以过渡那句话要能自然地引出要讲的东西。",
+    "节奏跟着游客：走得快就讲短一点，停下来的时候可以讲得深一点。",
+    "如果附近值得讲的都已经讲过了，只输出 NOTHING_NEW 这一个词，别的什么都不要写。",
+  ].join("\n");
+}
 function tourPrompt(focus, picked){
   const p = focus && nearby.concat(places).find(x => x.name === focus);
   const where = p ? `（离他约 ${p.dist} 米，${p.dir}）` : "";
@@ -660,7 +699,7 @@ function tourPrompt(focus, picked){
     ? `\n\n游客在地图上点了「${focus}」${where}，想听它的讲解。这次只讲这一个地方：直接照下面的格式写一个「## 」标题加 3–5 条要点。如果它和附近其他地方或之前讲过的地方有关联，可以点出来。`
     : `\n\n游客说之前讲错了地方，他眼前其实是「${focus}」${where}。这次只讲这一个地方。`;
   if (p && !nearby.includes(p)) nearby = [p, ...nearby].slice(0, 15);   // 确保这个地方的资料在清单里
-  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}${runningAuto ? "\n\n这是边走边听的连续讲解：这次只讲 1 个话题——附近还没讲过的里面最重要的那一个。如果附近值得讲的都已经讲过了，只输出 NOTHING_NEW 这一个词，别的什么都不要写。" : ""}${styleExtra()}`;
+  return `你是一位资深的中文城市导游。根据下面的信息，给游客讲讲他身边的东西。\n\n${context()}${f}\n\n${STYLE}\n\n${FORMAT_TOUR}${runningAuto ? autoGuideText() : ""}${styleExtra()}`;
 }
 function askPrompt(q){
   return `你是一位资深的中文城市导游，正在陪游客边走边看。\n\n${context()}\n\n游客问：${q}\n\n${STYLE}\n\n回答格式：直接回答问题，用 2–5 条以「- 」开头的要点，必要时可以用一行「## 名称」做小标题。不要用加粗，长短看问题需要。${styleExtra()}`;
@@ -765,7 +804,7 @@ function render(text, question){
 /* ---------- 语音：按段合成，按顺序播放 ---------- */
 let track = [], cur = -1, curDone = false, playing = false, paused = false, mode = "idle", speechGen = 0, speechStart = 0;
 function speakable(t){
-  return t.split("\n").map(l => l.trim()).filter(Boolean)
+  return t.split("\n").map(l => l.trim()).filter(Boolean).filter(l => !(runningAuto && /^##\s/.test(l)))
     .map(l => l.replace(/^##\s*/, "").replace(/^[-•*]\s+/, "").replace(/[📍➜#*]/g, "")
                .replace(/（[A-Za-z][^）]*）/g, "")       // 去掉括号里的英文原名，听起来更顺
                .replace(/（(你|在|约|正|左|右|前|后|身后|对面)[^）]*）/g, ""))
@@ -845,7 +884,7 @@ async function playIndex(i, frac = 0){
   const next = () => {
     if (g !== speechGen) return;
     if (cur + 1 < track.length) playIndex(cur + 1);
-    else { playing = false; mode = "idle"; curDone = true; updatePlayer(); setTimeout(autoNext, 600); }
+    else { playing = false; mode = "idle"; curDone = true; updatePlayer(); setTimeout(autoNext, 1500); }
   };
   if (url) {
     player.src = url;
@@ -1069,6 +1108,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     if (auto) threads[pane].msgs = [];
     threads[pane].msgs.push({ role: "user", content: userContent }, { role: "assistant", content: text });
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
+    if (auto) { const m = text.match(/^##\s*(.+)$/m); lastAuto = { title: m ? m[1].replace(/（[^）]*）/g, "").trim() : "", text: text.replace(/^##.*$/m, "") }; }
     if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked && !auto) showPicker(); }
   } catch (e) {
     const msg = errText(e);
@@ -1119,7 +1159,7 @@ function startWatch(){
 }
 function onMove(p){
   if (pos && p.coords.accuracy > 60 && p.coords.accuracy > pos.coords.accuracy * 2) return;   // 忽略明显变差的读数
-  pos = p;
+  pos = p; recordTrail(p);
   $("locState").textContent = autoOn ? "自动讲解中" : "已定位";
   $("coords").textContent = fmt(p);
   updateMe();
@@ -1138,7 +1178,7 @@ document.addEventListener("visibilitychange", () => { if (autoOn && document.vis
 
 function startAuto(){
   if (!("geolocation" in navigator) || !window.isSecureContext) { status(geoErr({})); return; }
-  autoOn = true; autoCount = 0;
+  autoOn = true; autoCount = 0; lastAuto = null;
   waitingMove = false;
   unlockAudio(); keepAwake(); startWatch();
   $("autoBtn").setAttribute("aria-pressed", "true"); $("autoBtn").textContent = "自动讲解：开";
