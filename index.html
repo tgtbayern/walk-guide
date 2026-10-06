@@ -275,6 +275,7 @@ textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
         <label class="chip"><input type="checkbox" value="历史事件和人物" checked><span>历史</span></label>
         <label class="chip"><input type="checkbox" value="城市文化和习俗" checked><span>文化</span></label>
         <label class="chip"><input type="checkbox" value="冷知识和意想不到的事实" checked><span>冷知识</span></label>
+        <label class="chip"><input type="checkbox" value="地理和自然：地形地貌、湖泊河流、气候、城市为什么长在这里、这里原来是什么样" checked><span>地理</span></label>
         <label class="chip"><input type="checkbox" value="建筑和设计师"><span>建筑</span></label>
         <label class="chip"><input type="checkbox" value="美食"><span>美食</span></label>
         <label class="chip"><input type="checkbox" value="影视取景"><span>影视取景</span></label>
@@ -669,7 +670,7 @@ const STYLE = [
   "- 像一个懂行的朋友在旁边聊天：有具体的人名、年份、来龙去脉，不要空泛的形容词。",
   "- 语气自然、像人话：用平实的口语；不要奇怪的比喻和拟人，不要夸张煽情，不要故弄玄虚的反转句式（比如「你以为……其实……」「最让人意想不到的是」「答案是」），不要设问自答，不要说教。",
   "- 人名、地名、作品名第一次出现时，中文名后面用括号附英文原名，例如：丹尼尔·伯纳姆（Daniel Burnham）。",
-  "- 选题不限于建筑：这里发生过的历史事件、名人轶事、城市文化和习俗、街名地名的由来、电影和流行文化、发明和「第一次」、美食起源、冷知识都可以讲。",
+  "- 选题不限于建筑：这里发生过的历史事件、名人轶事、城市文化和习俗、地理和自然（地形、湖泊河流、气候、这座城市为什么长在这里）、街名地名的由来、电影和流行文化、发明和「第一次」、美食起源、冷知识都可以讲。",
   "- 建筑本身平平无奇就别硬讲它的建成年份和风格；只有它真有看点（名作、名人设计、背后有故事、外立面有值得看的细节）时才讲建筑，讲的时候也优先讲它背后的人和事。",
   "- 挑重要的说：先看重要性（对城市、历史、文化影响大，名气大，游客最该知道的），再看趣味。宁缺毋滥：次要的细节、要打折扣的传说、绕远的背景一律不讲，每句话都要值得听。",
   "- 只写你有把握的事实。不确定的数字宁可不写，也不要编。",
@@ -1355,6 +1356,14 @@ $("customPrompt").addEventListener("input", () => {
   customTimer = setTimeout(() => { store.set("wg_custom", $("customPrompt").value); $("styleSaved").textContent = "已保存，对下一次讲解生效。"; }, 400);
 });
 $("stylePreset").addEventListener("change", () => { $("styleSaved").textContent = "已保存，对下一次讲解生效。"; });
+
+/* ---------- 兴趣方向：记住选择 ---------- */
+{
+  const saved = store.get("wg_chips");
+  if (saved) { const on = JSON.parse(saved); document.querySelectorAll("#chips input").forEach(i => { i.checked = on.includes(i.value); }); }
+  document.querySelectorAll("#chips input").forEach(i => i.addEventListener("change", () =>
+    store.set("wg_chips", JSON.stringify([...document.querySelectorAll("#chips input:checked")].map(x => x.value)))));
+}
 </script>
 </body>
 </html>
