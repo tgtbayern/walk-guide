@@ -655,6 +655,17 @@ async function refreshPlaces(){
 
 /* ---------- 提示词 ---------- */
 function interests(){ return [...document.querySelectorAll("#chips input:checked")].map(i => i.value); }
+var saidLog = [];
+try { const o = JSON.parse(localStorage.getItem("wg_said") || "null"); if (o && Date.now() - o.t < 12 * 3600e3) saidLog = o.items; } catch (_) {}
+function rememberSaid(text){
+  const body = text.split("\n").filter(l => l.trim() && !/^##\s/.test(l)).join(" ").replace(/（[A-Za-z][^）]*）/g, "").replace(/\s+/g, " ").trim();
+  if (!body) return;
+  saidLog.push(body);
+  let total = 0, keep = [];
+  for (let i = saidLog.length - 1; i >= 0; i--) { total += saidLog[i].length; if (total > 6000) break; keep.unshift(saidLog[i]); }
+  saidLog = keep;
+  try { localStorage.setItem("wg_said", JSON.stringify({ t: Date.now(), items: saidLog })); } catch (_) {}
+}
 function context(){
   const L = [];
   if (pos) {
@@ -667,6 +678,7 @@ function context(){
   const ins = interests(); if (ins.length) L.push(`游客感兴趣的方向：${ins.join("、")}。`);
   const nt = nearbyText(); if (nt) L.push("", nt);
   if (covered.length) L.push(`之前已经讲过：${covered.slice(-40).join("、")}。不要重复讲这些：同一个故事、同一批人物、同一段历史，即使换了地点或标题也算重复，一句都不要再讲，但如果新地方和它们有关联（同一位建筑师、同一段历史），要点出来，比如"你刚才看过的某某也是他设计的"。`);
+  if (saidLog.length) L.push("", "下面是今天已经讲给游客听过的内容（按时间顺序）。写之前逐条对照：里面出现过的事实、解释、故事、数字、人物，一律不要再说，换个说法、换个地点、当作背景顺带一提都不行（比如已经说过这里地形平坦是冰川造成的，就再也不要提冰川和地形）。要讲就讲里面没有的新东西。", "【已讲过】" + saidLog.join("\n【已讲过】"));
   return L.join("\n");
 }
 const SPOKEN = "这是要念出来给人听的讲稿：句子短，一句只说一件事，像一个受过教育的成年人在正常地跟朋友讲话。用词要直白、标准：用最普通的正式说法，不用俗语、俚语、歇后语和带画面感的说法，比如说「打算」不说「算盘」，说「规划」不说「划下的线」「各画各的线」，说「很有名」不说「名片」。直接陈述事实：不要先否定再肯定，凡是「不是……是……」「不是……而是……」「与其说……不如说……」「其实……」这类句式一律不用，直接说「那时这里有三个互相竞争的定居点」。不要用冒号引出解释或结论；不要「见证了」「缩影」「印记」「这背后」这类套话；不要比喻、拟人、排比；不要设问自答；不要「最有意思的是」「值得一提的是」这类提示语；结尾不要总结、升华或说教；不要提信息来源（比如「地址里写着」「资料显示」）。";
@@ -1123,6 +1135,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     if (auto) threads[pane].msgs = [];
     threads[pane].msgs.push({ role: "user", content: userContent }, { role: "assistant", content: text });
     for (const m of text.matchAll(/^##\s*([^（(\n]+)/gm)) covered.push(m[1].trim());
+    if (!photo) rememberSaid(text);
     if (auto) { const m = text.match(/^##\s*(.+)$/m); lastAuto = { title: m ? m[1].replace(/（[^）]*）/g, "").trim() : "", text: text.replace(/^##.*$/m, "") }; }
     if (!question && !photo && !follow) { if (pos) lastTold = pos.coords; lastToldAt = Date.now(); if (!picked && !auto) showPicker(); }
     addTurnActions(turn, text, photo, photoUrls);
