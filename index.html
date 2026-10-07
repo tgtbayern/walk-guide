@@ -537,7 +537,7 @@ async function fetchWiki(lat, lon){
     `&ggscoord=${lat}%7C${lon}&ggsradius=800&ggslimit=40&colimit=max&prop=coordinates%7Cdescription%7Cextracts%7Cpageimages` +
     "&exintro=1&explaintext=1&exsentences=4&exlimit=20&piprop=thumbnail&pithumbsize=160&pilimit=40";
   const j = await (await fetch(u)).json();
-  const junk = /area code|radio station|television station|tv station|^street in|zip code|postal code/i;   // 历史事件保留，它们正是好话题
+  const junk = /area code|radio station|television station|tv station|^street in|zip code|postal code|(elementary|middle|high|charter|primary|public|private|catholic|lutheran|christian|montessori|parochial) school|school district|^school in|church|parish|congregation|synagogue|mosque|cemetery|apartment|condominium|office building|residential building|parking/i;   // 历史事件保留，它们正是好话题
   return Object.values(j.query?.pages || {}).filter(p => p.coordinates && !junk.test(p.description || "") && !/^Area code/.test(p.title)).map(p => ({
     name: p.title, lat: p.coordinates[0].lat, lon: p.coordinates[0].lon, src: "维基百科",
     kind: p.description || "", info: (p.extract || "").replace(/\s+/g, " ").slice(0, 600),
@@ -678,6 +678,7 @@ const STYLE = [
   "- 不要夸张煽情，不要故弄玄虚的反转句式（比如「你以为……其实……」「最让人意想不到的是」「答案是」）。",
   "- 人名、地名、作品名第一次出现时，中文名后面用括号附英文原名，例如：丹尼尔·伯纳姆（Daniel Burnham）。",
   "- 选题不限于建筑：这里发生过的历史事件、名人轶事、城市文化和习俗、地理和自然（地形、湖泊河流、气候、这座城市为什么长在这里）、街名地名的由来、电影和流行文化、发明和「第一次」、美食起源、冷知识都可以讲。",
+  "- 附近地点清单只是候选，不是必须讲的。只有城市级别的有名地方（地标、名作、大机构、出过大事的地方）才值得讲；普通学校、教堂、小公园、小博物馆、写字楼、公寓、小店这类，一个字都不要提，提一句也不行。",
   "- 小东西一律不讲：普通写字楼、小店、停车楼、不出名的小建筑和小雕塑，都跳过。附近没有真正值得讲的，就把范围放大：这个街区、这座城市、周边城市、所在的州，讲它们是怎么形成的、历史转折、经济（支柱产业、大公司、GDP、就业）、房价房租和生活成本、本地人怎么生活、气候和地理、体育和饮食文化等，只举例，不限于这些。讲大话题时也尽量和游客眼前看到的东西挂上钩。涉及数字（GDP、房租、人口）时说大约多少、是哪一年左右的数据，没把握的数字不说。",
   "- 建筑本身平平无奇就别硬讲它的建成年份和风格；只有它真有看点（名作、名人设计、背后有故事、外立面有值得看的细节）时才讲建筑，讲的时候也优先讲它背后的人和事。",
   "- 挑重要的说：先看重要性（对城市、历史、文化影响大，名气大，游客最该知道的），再看趣味。宁缺毋滥：次要的细节、要打折扣的传说、绕远的背景一律不讲，每句话都要值得听。",
@@ -701,7 +702,7 @@ function autoGuideText(){
     "和上一段怎么接，看有没有关系：真有联系（同一个人、同一段历史、顺着同一条路）就自然带一句；没什么关系就直接讲新的，不要硬凑过渡。也可以从游客正在走的路或眼前能看到的东西说起。",
     "每个地方怎么讲合适就怎么讲；唯一要求是有一行「## 名字」（放在最开头，或放在第一句话之后都行），名字要短，不加冒号和副标题。这一行不会被念出来，所以正文要让人一听就知道在说哪儿、说什么。",
     "节奏跟着游客：走得快就讲短一点，停下来的时候可以讲得深一点。",
-    "附近值得讲的地点都讲过了，就放大范围，换一个还没讲过的方向，讲一个大话题，比如这座城市靠什么产业吃饭、大公司和就业、房租房价和生活成本、本地人的日常和口味、体育、气候、周边城市、这个州是怎么形成的，让讲解一直有东西听。优先选和前面几段方向不同的。只有这些层面也确实讲得很多了，才只输出 NOTHING_NEW 这一个词。",
+    "附近没有城市级别的有名地方，就不要讲附近的东西，直接发散。附近值得讲的地点都讲过了，也一样放大范围，换一个还没讲过的方向，讲一个大话题，比如这座城市靠什么产业吃饭、大公司和就业、房租房价和生活成本、本地人的日常和口味、体育、气候、周边城市、这个州是怎么形成的，让讲解一直有东西听。优先选和前面几段方向不同的：上一段讲历史，这一段就换成经济、生活、地理、体育或饮食，不要连续两段同一类。只有这些层面也确实讲得很多了，才只输出 NOTHING_NEW 这一个词。",
   ].join("\n");
 }
 function tourPrompt(focus, picked){
