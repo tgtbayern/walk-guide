@@ -2,188 +2,312 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="随身导游">
+<meta name="theme-color" content="#F3F5F7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B1117" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="theme-color" content="#41B6E6">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" type="image/png" href="icon-192.png">
-<link rel="manifest" href="manifest.json">
 <title>随身导游</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
+/* ============================================================
+   设计依据（简要）：
+   · 地图在底、内容在可拖动的面板上（Apple 地图 / Google 地图 2025 的 sheet 结构）：
+     三档高度 peek / half / full，有抓手，点抓手切换档位（Apple HIG · Sheets）。
+   · 声音是主角：底部常驻"正在讲"卡片（Spotify / Apple Music 的迷你播放器），
+     播放键 56px，开车一眼能按（NHTSA：单次视线离开路面不超过 2 秒，屏上字尽量短）。
+   · 所有图标都带文字标签，选中状态统一（Bloomberg Connects 设计评审的教训）。
+   · 语音输入：输入框空时是麦克风，有字时变发送（微信 / iMessage 的惯例）；
+     听的时候有实时音量波形和识别文字，说完自动停（静音检测）。
+   · 深色模式自动跟随系统，地图底图同步变暗，夜里开车不晃眼。
+   ============================================================ */
 :root{
-  --sky:#41B6E6; --star:#E4002B; --ink:#14212B; --paper:#FFFFFF; --mist:#EAF6FC; --line:#C9E6F4; --muted:#5B6B77;
+  --bg:#F3F5F7; --surface:#FFFFFF; --surface-2:#EDF1F4; --surface-3:#E3E9EE;
+  --ink:#0E1A23; --ink-2:#44545F; --ink-3:#7D8B95; --line:rgba(14,26,35,.09); --line-2:rgba(14,26,35,.16);
+  --sky:#41B6E6; --accent:#0A78B8; --accent-soft:#E2F2FB; --on-accent:#FFFFFF;
+  --star:#E4002B; --star-soft:#FDE7EA; --on-star:#FFFFFF;
+  --glass:rgba(255,255,255,.80); --glass-line:rgba(255,255,255,.6);
+  --shadow-1:0 1px 2px rgba(14,26,35,.06),0 1px 1px rgba(14,26,35,.04);
+  --shadow-2:0 6px 20px rgba(14,26,35,.10),0 1px 3px rgba(14,26,35,.08);
+  --shadow-3:0 -10px 34px rgba(14,26,35,.14),0 -1px 0 rgba(14,26,35,.05);
+  --r-s:10px; --r-m:14px; --r-l:20px; --r-xl:26px;
   --latin:"Archivo Narrow","Arial Narrow",system-ui,sans-serif;
-  --cjk:"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
-  box-sizing:border-box;
-  padding-top:env(safe-area-inset-top,0px);
-  padding-bottom:env(safe-area-inset-bottom,0px);
+  --cjk:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --safe-b:env(safe-area-inset-bottom,0px);
+  color-scheme:light dark;
 }
 @media (prefers-color-scheme: dark){
-  :root{ --ink:#E8F1F6; --paper:#0E1A22; --mist:#132733; --line:#1F3B4C; --muted:#93A8B5; --sky:#5EC4EE; }
+  :root{
+    --bg:#0B1117; --surface:#141C24; --surface-2:#1B252F; --surface-3:#243140;
+    --ink:#E8EFF4; --ink-2:#A7B4BE; --ink-3:#72808B; --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.16);
+    --accent:#56BDF0; --accent-soft:#12324A; --on-accent:#04121B;
+    --star:#FF4560; --star-soft:#3A1219; --on-star:#FFFFFF;
+    --glass:rgba(20,28,36,.78); --glass-line:rgba(255,255,255,.08);
+    --shadow-2:0 6px 20px rgba(0,0,0,.45),0 1px 3px rgba(0,0,0,.4);
+    --shadow-3:0 -10px 34px rgba(0,0,0,.5),0 -1px 0 rgba(255,255,255,.05);
+  }
+  .leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.55)}
+  .leaflet-container{background:#1a232b!important}
 }
-*,*::before,*::after{box-sizing:inherit}
-body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--cjk);font-size:17px;line-height:1.7;-webkit-text-size-adjust:100%}
-.wrap{max-width:560px;margin:0 auto;padding:0 20px 56px}
-.flag{position:relative;padding:28px 0 22px}
-.flag::before,.flag::after{content:"";position:absolute;left:-20px;right:-20px;height:10px;background:var(--sky)}
-.flag::before{top:12px}.flag::after{bottom:0}
-.title{display:flex;align-items:center;gap:12px;margin:14px 0 0}
-.title h1{font-family:var(--latin);font-weight:700;font-size:34px;margin:0;line-height:1.1}
-.title h1 span{font-family:var(--cjk)}
-svg.star{width:30px;height:30px;flex:none;fill:var(--star)}
-.sub{color:var(--muted);font-size:15px;margin:4px 0 0}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--cjk);font-size:16px;line-height:1.6;-webkit-text-size-adjust:100%;-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+button{font-family:inherit;color:inherit;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[role=button]:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
+.hide{display:none!important}
+svg.i{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+svg.star{width:22px;height:22px;flex:none;fill:var(--star)}
 
-.loc{margin:22px 0 0;padding:14px 16px;border-left:6px solid var(--star);background:var(--mist);border-radius:0 10px 10px 0}
-.loc .coords{font-family:var(--latin);font-size:15px;color:var(--muted)}
-.loc .state{font-weight:600}
-
-.main-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:18px 0 0;padding:18px;border:0;border-radius:14px;background:var(--star);color:#fff;font:700 20px var(--cjk);cursor:pointer}
-.main-btn:disabled{opacity:.55}
-.main-btn svg{width:22px;height:22px;fill:#fff}
+/* ---------- 通用控件 ---------- */
+.btn-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 18px;border:0;border-radius:999px;background:var(--star);color:var(--on-star);font-size:16px;font-weight:700;letter-spacing:.01em;cursor:pointer;box-shadow:0 4px 14px rgba(228,0,43,.28);transition:transform .15s var(--ease),opacity .2s}
+.btn-primary:active{transform:scale(.97)}
+.btn-primary:disabled{opacity:.5;box-shadow:none}
+.btn-primary.block{display:flex;width:100%;margin-top:18px}
+.btn-quiet{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:44px;padding:0 16px;border:0;border-radius:999px;background:var(--surface-2);color:var(--ink);font-size:15px;font-weight:600;cursor:pointer}
+.btn-quiet:active{background:var(--surface-3)}
+.toggle{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:48px;padding:0 14px;border:0;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s,color .2s}
+.toggle[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.toggle .dot{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.35}
+.toggle[aria-pressed="true"] .dot{opacity:1}
 .row{display:flex;gap:10px;margin-top:12px}
-.ghost{flex:1;padding:12px;border:2px solid var(--line);border-radius:12px;background:transparent;color:var(--ink);font:600 15px var(--cjk);cursor:pointer}
-.ghost[aria-pressed="true"]{border-color:var(--sky);background:var(--mist)}
-.ghost:disabled{opacity:.5}
-button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--sky);outline-offset:2px}
-
-.status{display:none;margin-top:14px;padding:12px 16px;border-radius:12px;background:var(--mist);border:2px dashed var(--sky);font-size:15px}
+.row>*{flex:1}
+.hint{margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--ink-3)}
+.err{color:var(--star);font-weight:600}
+.thinking{color:var(--ink-3)}
+.field{width:100%;margin-top:6px;padding:12px 14px;border:1px solid var(--line-2);border-radius:var(--r-m);background:var(--surface);color:var(--ink);font:16px/1.4 var(--cjk);-webkit-appearance:none;appearance:none}
+textarea.field{resize:vertical;min-height:92px;line-height:1.55}
+.secret{-webkit-text-security:disc;font-family:var(--latin);letter-spacing:.04em}
+label.lbl{display:block;margin-top:14px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.status{display:none;margin-top:10px;padding:10px 14px;border-radius:var(--r-m);background:var(--accent-soft);color:var(--ink);font-size:14px;line-height:1.5}
 .status.show{display:block}
 
-details{margin-top:18px;border-top:2px solid var(--line);padding-top:12px}
-summary{cursor:pointer;font-weight:600;color:var(--muted)}
-label.lbl{display:block;margin-top:12px;font-size:14px;color:var(--muted)}
-.field{width:100%;margin-top:6px;padding:12px 14px;border:2px solid var(--line);border-radius:12px;background:var(--paper);color:var(--ink);font:16px var(--cjk)}
-.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* ---------- 启动页 ---------- */
+.onboard{min-height:100%;max-width:520px;margin:0 auto;padding:calc(env(safe-area-inset-top,0px) + 28px) 20px calc(var(--safe-b) + 32px)}
+.ob-hero{position:relative;padding:36px 4px 26px}
+.ob-flag{position:absolute;left:-20px;right:-20px;top:0;height:100%;pointer-events:none;opacity:.9}
+.ob-flag i{position:absolute;left:0;right:0;height:9px;background:var(--sky);border-radius:0}
+.ob-flag i:first-child{top:10px}.ob-flag i:last-child{bottom:0}
+.ob-hero .title{display:flex;align-items:center;gap:12px;margin-top:10px}
+.ob-hero svg.star{width:34px;height:34px}
+.ob-hero h1{margin:0;font:700 36px/1.05 var(--latin);letter-spacing:-.01em}
+.ob-hero h1 span{font-family:var(--cjk);font-size:30px}
+.ob-hero p{margin:12px 0 0;font-size:16px;color:var(--ink-2)}
+.card{margin-top:18px;padding:18px;border-radius:var(--r-l);background:var(--surface);box-shadow:var(--shadow-1)}
+.ob-note{margin:0;padding:12px 14px;border-radius:var(--r-m);background:var(--accent-soft);font-size:14px;line-height:1.55}
+
+/* ---------- App 骨架 ---------- */
+.app{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);padding-top:env(safe-area-inset-top,0px)}
+.panes{flex:1;min-height:0;position:relative}
+.pane{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 16px 28px}
+
+/* 地图页：地图铺满，面板盖在上面 */
+#pane-map{padding:0;overflow:hidden}
+.map-wrap{position:absolute;inset:0}
+#map{position:absolute;inset:0;z-index:0;background:var(--surface-2)}
+.leaflet-control-attribution{font-size:10px!important;background:var(--glass)!important;color:var(--ink-3)!important;border-radius:8px 0 0 8px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.leaflet-control-attribution a{color:var(--ink-2)!important}
+.glass{background:var(--glass);border:1px solid var(--glass-line);backdrop-filter:blur(18px) saturate(170%);-webkit-backdrop-filter:blur(18px) saturate(170%);box-shadow:var(--shadow-2)}
+.topbar{position:absolute;left:12px;top:10px;z-index:600;display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);padding:7px 14px 7px 10px;border-radius:999px}
+.topbar .title{display:flex;align-items:center;gap:7px;font-size:16px;font-weight:700;white-space:nowrap}
+.loc-mini{display:flex;align-items:center;gap:6px;padding-left:10px;border-left:1px solid var(--line-2);font-size:13px;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loc-mini::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--ink-3)}
+.loc-mini[data-on="1"]::before{background:#22B573;box-shadow:0 0 0 3px rgba(34,181,115,.2)}
+
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:700;display:flex;flex-direction:column;height:52%;background:var(--surface);border-radius:var(--r-xl) var(--r-xl) 0 0;box-shadow:var(--shadow-3);transition:height .38s var(--ease);will-change:height}
+.sheet.dragging{transition:none}
+.fab{position:absolute;right:12px;top:-60px;width:48px;height:48px;display:grid;place-items:center;border-radius:50%;border:0;color:var(--accent);cursor:pointer;transition:opacity .2s}
+.sheet[data-detent="full"] .fab{opacity:0;pointer-events:none}
+.sheet-head{flex:none;padding:0 16px 10px;touch-action:none;cursor:grab}
+.grabber{display:block;width:100%;height:24px;margin:0;padding:0;border:0;background:none;cursor:pointer}
+.grabber::before{content:"";display:block;width:38px;height:5px;margin:8px auto 0;border-radius:3px;background:var(--line-2)}
+.actions{display:flex;gap:8px}
+.actions #go{flex:1.5;min-width:0}
+.actions .toggle{flex:1;min-width:0;padding:0 10px}
+.sheet-body{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 18px 24px;border-top:1px solid var(--line)}
+
+/* ---------- 讲解正文 ---------- */
+.story{margin-top:4px}
+.story p{margin:0 0 12px;font-size:17px;line-height:1.82;letter-spacing:.005em}
+.story .where{font-size:15px;font-weight:600;color:var(--ink-2)}
+.story h2{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:20px 0 8px;font-size:20px;line-height:1.35;font-weight:750;letter-spacing:-.005em}
+.story h2 .t{position:relative;padding-left:20px}
+.story h2 .t::before{content:"";position:absolute;left:0;top:.28em;width:13px;height:13px;background:var(--star);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
+.story h2 .m{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-size:12.5px;font-weight:600;letter-spacing:0}
+.story ul{margin:0 0 10px;padding-left:1.2em}
+.story li{margin:0 0 8px;font-size:17px;line-height:1.75}
+.story .next{padding:12px 14px;border-radius:var(--r-m);background:var(--surface-2)}
+.turn{padding-top:14px}
+.turn+.turn{margin-top:14px;border-top:1px solid var(--line)}
+.story .q{display:block;width:fit-content;max-width:86%;margin:0 0 14px auto;padding:9px 14px;border-radius:18px 18px 6px 18px;background:var(--accent);color:var(--on-accent);font-size:15px;line-height:1.5}
+.story .thinking{display:flex;align-items:center;gap:10px;font-size:15px}
+.story .thinking::before{content:"";flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--line-2);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty{display:flex;gap:12px;align-items:flex-start;margin-top:10px;padding:14px;border-radius:var(--r-m);background:var(--surface-2);font-size:15px;line-height:1.6;color:var(--ink-2)}
+.empty svg{color:var(--accent);margin-top:2px}
+.picker{margin-top:18px;padding-top:12px;border-top:1px dashed var(--line-2)}
+.picker-title{margin:0 0 8px!important;font-size:13px!important;font-weight:600;color:var(--ink-3)}
+.pick{display:inline-flex;align-items:center;gap:6px;min-height:38px;margin:0 8px 8px 0;padding:0 14px;border:1px solid var(--line-2);border-radius:999px;background:var(--surface);color:var(--ink);font-size:14px;font-weight:500;cursor:pointer;text-align:left}
+.pick:active{background:var(--surface-2)}
+.turn-actions{display:flex;flex-wrap:wrap;margin-top:4px}
+.gallery{display:flex;gap:8px;overflow-x:auto;margin-top:6px;padding-bottom:4px}
+.gallery img{flex:none;height:96px;border-radius:var(--r-s);cursor:zoom-in}
+.fullimg{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.94);display:flex;align-items:center;justify-content:center;padding:env(safe-area-inset-top,0px) 0 var(--safe-b)}
+.fullimg img{max-width:100%;max-height:100%;object-fit:contain}
+
+/* ---------- 地图上的景点照片 ---------- */
+.pin-icon{background:none;border:0}
+.pin{display:flex;flex-direction:column;align-items:center;width:104px;cursor:pointer;transition:transform .2s var(--ease)}
+.pin img,.pin b{display:block;width:50px;height:50px;border-radius:50%;border:3px solid #fff;object-fit:cover;background:var(--sky);box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.pin b{display:grid;place-items:center;color:#fff;font-size:20px}
+.pin span{margin-top:4px;max-width:104px;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.94);color:#0E1A23;font:600 11.5px/1.45 var(--latin);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+.pin.on{transform:scale(1.14)}
+.pin.on img,.pin.on b{border-color:var(--star)}
+.pin.on span{background:var(--star);color:#fff}
+
+/* ---------- 展板页 / 设置页：大标题 + 分组卡片 ---------- */
+.large-title{padding:18px 4px 6px}
+.large-title h2{margin:0;font-size:30px;line-height:1.15;font-weight:800;letter-spacing:-.01em}
+.large-title p{margin:6px 0 0;font-size:15px;color:var(--ink-2)}
+.seg{display:flex;gap:4px;margin-top:14px;padding:4px;border-radius:12px;background:var(--surface-3)}
+.seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;color:var(--ink-2);font-size:15px;font-weight:600;cursor:pointer;transition:background .2s,color .2s}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow-1)}
+.capture{display:grid;grid-template-columns:1.4fr 1fr;gap:10px;margin-top:14px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-end;gap:4px;min-height:118px;padding:14px;border:0;border-radius:var(--r-l);background:var(--surface);color:var(--ink);text-align:left;box-shadow:var(--shadow-1);cursor:pointer;transition:transform .15s var(--ease)}
+.tile:active{transform:scale(.98)}
+.tile svg.i{width:28px;height:28px;margin-bottom:auto;color:var(--accent)}
+.tile b{font-size:17px}
+.tile small{font-size:12.5px;color:var(--ink-3);line-height:1.4}
+.tile-main{background:var(--star);color:var(--on-star);box-shadow:0 8px 22px rgba(228,0,43,.25)}
+.tile-main svg.i{color:#fff}
+.tile-main small{color:rgba(255,255,255,.85)}
+.tray{display:flex;gap:10px;overflow-x:auto;padding:10px 4px 6px}
+.shot{position:relative;flex:none;width:78px;height:78px;border-radius:12px;background:#000;cursor:pointer;padding:0;box-shadow:var(--shadow-1)}
+.shot img{width:100%;height:100%;object-fit:cover;border-radius:12px;display:block}
+.shot .no{position:absolute;left:5px;top:5px;min-width:20px;height:20px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font:700 12px/20px var(--latin);text-align:center}
+.shot .cropped{position:absolute;left:5px;bottom:5px;padding:0 6px;border-radius:8px;background:var(--accent);color:#fff;font-size:11px;line-height:18px}
+.shot .x{position:absolute;right:-7px;top:-7px;width:24px;height:24px;border-radius:50%;border:2px solid var(--surface);background:var(--ink);color:var(--surface);font:700 13px/20px var(--latin);cursor:pointer;padding:0}
+.crop-wrap{margin-top:10px;border-radius:var(--r-m);overflow:hidden;background:#000;line-height:0}
+#cropCanvas{width:100%;touch-action:none;cursor:crosshair}
+#pane-photo .story{margin-top:18px}
+#pane-photo .story:empty{display:none}
+#pane-photo .story .turn:first-child{padding-top:4px}
+
+.group-title{margin:22px 4px 8px;font-size:13px;font-weight:700;color:var(--ink-3);letter-spacing:.04em}
+.group{border-radius:var(--r-l);background:var(--surface);box-shadow:var(--shadow-1);overflow:hidden}
+.cell{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:52px;padding:10px 16px}
+.cell+.cell{border-top:1px solid var(--line)}
+.cell>label,.cell>.k{font-size:16px;font-weight:500}
+.cell.col{flex-direction:column;align-items:stretch;gap:4px}
+.cell.col>label,.cell.col>.k{font-size:14px;font-weight:600;color:var(--ink-2)}
+.cell .field{margin-top:4px}
+.sel{max-width:58%;padding:8px 30px 8px 12px;border:0;border-radius:10px;background:var(--surface-2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%237D8B95' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;color:var(--ink);font:15px var(--cjk);text-align:right;-webkit-appearance:none;appearance:none}
+.coords{font:500 14px var(--latin);color:var(--ink-2)}
+.cell-btn{width:100%;justify-content:flex-start;border:0;background:none;color:var(--star);font-size:16px;font-weight:600;cursor:pointer;text-align:left}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .chip{position:relative}
 .chip input{position:absolute;opacity:0;inset:0}
-.chip span{display:inline-block;padding:6px 14px;border-radius:999px;border:2px solid var(--line);font-size:15px;cursor:pointer}
-.chip input:checked+span{background:var(--sky);border-color:var(--sky);color:#fff}
-.map-wrap{position:relative;margin-top:16px}
-#map{height:56vh;min-height:320px;max-height:560px;border-radius:14px;border:2px solid var(--line);z-index:0;background:var(--mist)}
-.map-btn{position:absolute;right:10px;bottom:56px;z-index:500;width:44px;height:44px;border-radius:50%;border:0;background:#fff;color:#1a73e8;font-size:22px;box-shadow:0 1px 4px rgba(0,0,0,.3);cursor:pointer}
-.map-hint{margin:6px 2px 0;font-size:13px;color:var(--muted)}
-.pin-icon{background:none;border:0}
-.pin{display:flex;flex-direction:column;align-items:center;width:96px;cursor:pointer}
-.pin img,.pin b{display:block;width:48px;height:48px;border-radius:50%;border:3px solid #fff;object-fit:cover;box-shadow:0 1px 5px rgba(0,0,0,.45);background:var(--sky)}
-.pin b{display:grid;place-items:center;color:#fff;font-size:20px}
-.pin span{margin-top:2px;max-width:96px;padding:1px 6px;border-radius:8px;background:rgba(255,255,255,.92);color:#14212B;font:600 11px/1.4 var(--latin);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 2px rgba(0,0,0,.2)}
-.pin.on img,.pin.on b{border-color:var(--star);transform:scale(1.15)}
-.pin.on span{background:var(--star);color:#fff}
-.cam{margin-top:22px;padding-top:16px;border-top:2px solid var(--line)}
-.cam-title{margin:0 0 4px;font-weight:700}
-.seg{display:flex;margin-top:12px;border:2px solid var(--line);border-radius:12px;overflow:hidden}
-.seg button{flex:1;padding:11px 8px;border:0;background:transparent;color:var(--ink);font:600 15px var(--cjk);cursor:pointer}
-.seg button+button{border-left:2px solid var(--line)}
-.seg button[aria-pressed="true"]{background:var(--sky);color:#fff}
-.player #plRate{width:auto;min-width:52px;padding:0 10px;border-radius:22px;background:var(--mist);color:var(--ink);font:700 14px var(--latin)}
-.tray{display:flex;gap:10px;overflow-x:auto;padding:12px 2px 4px}
-.shot{position:relative;flex:none;width:76px;height:76px;border-radius:10px;overflow:visible;border:2px solid var(--line);background:#000;cursor:pointer;padding:0}
-.shot img{width:100%;height:100%;object-fit:cover;border-radius:8px;display:block}
-.shot .no{position:absolute;left:4px;top:4px;min-width:20px;height:20px;border-radius:10px;background:rgba(0,0,0,.65);color:#fff;font:700 12px/20px var(--latin);text-align:center}
-.shot .cropped{position:absolute;left:4px;bottom:4px;padding:0 6px;border-radius:8px;background:var(--sky);color:#fff;font:600 11px/18px var(--cjk)}
-.shot .x{position:absolute;right:-8px;top:-8px;width:24px;height:24px;border-radius:50%;border:0;background:var(--star);color:#fff;font:700 14px/24px var(--latin);cursor:pointer;padding:0}
-.crop-wrap{margin-top:10px;border-radius:12px;overflow:hidden;border:2px solid var(--line);background:#000;line-height:0}
-#cropCanvas{width:100%;touch-action:none;cursor:crosshair}
-.player{position:fixed;left:0;right:0;bottom:0;z-index:1200;display:flex;align-items:center;gap:10px;padding:10px 16px calc(10px + env(safe-area-inset-bottom,0px));background:var(--paper);border-top:2px solid var(--line);box-shadow:0 -2px 12px rgba(0,0,0,.08)}
-.player.hide{display:none}
-.player button{flex:none;width:44px;height:44px;border-radius:50%;border:0;background:var(--star);color:#fff;font:700 16px var(--latin);cursor:pointer}
-.player #plReplay{background:var(--mist);color:var(--ink);font-size:22px}
-.pl-bar{flex:1;height:32px;display:flex;align-items:center;cursor:pointer;touch-action:none}
-.pl-track{position:relative;width:100%;height:6px;border-radius:3px;background:var(--line)}
-.pl-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:3px;background:var(--sky)}
-.pl-fill::after{content:"";position:absolute;right:-7px;top:-5px;width:16px;height:16px;border-radius:50%;background:var(--sky);box-shadow:0 1px 3px rgba(0,0,0,.3)}
-.pl-label{flex:none;min-width:48px;text-align:right;font:600 13px var(--latin);color:var(--muted)}
-body.has-player .wrap{padding-bottom:110px}
-.turn-actions{display:flex;flex-wrap:wrap;gap:0;margin-top:10px}
-.gallery{display:flex;gap:8px;overflow-x:auto;margin-top:6px}
-.gallery img{flex:none;height:96px;border-radius:8px;border:2px solid var(--line);cursor:zoom-in}
-.fullimg{position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px)}
-.fullimg img{max-width:100%;max-height:100%;object-fit:contain}
-.picker{margin-top:22px;padding-top:14px;border-top:2px dashed var(--line)}
-.picker-title{margin:0 0 8px;font-size:15px;color:var(--muted)}
-.pick{margin:0 8px 8px 0;padding:8px 14px;border:2px solid var(--line);border-radius:999px;background:transparent;color:var(--ink);font:15px var(--cjk);cursor:pointer;text-align:left}
-.pick:hover{border-color:var(--sky)}
-.secret{-webkit-text-security:disc;font-family:var(--latin)}
-.hint{font-size:13px;color:var(--muted);margin:6px 0 0}
+.chip span{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border-radius:999px;background:var(--surface-2);color:var(--ink-2);font-size:15px;font-weight:500;cursor:pointer;transition:background .2s,color .2s}
+.chip input:checked+span{background:var(--accent);color:var(--on-accent)}
+.chip input:focus-visible+span{outline:3px solid var(--sky);outline-offset:2px}
+.foot{margin:18px 4px 0;font-size:13px;line-height:1.6;color:var(--ink-3)}
 
-.ask{display:flex;gap:8px;margin-top:22px}
-.ask .field{margin:0}
-.ask button{flex:none;width:auto;padding:0 18px}
+/* ---------- 底部：正在讲 / 语音输入 / 追问 / 标签栏 ---------- */
+.dock{flex:none;position:relative;z-index:900;background:var(--surface);border-top:1px solid var(--line)}
+.player{position:relative;margin:8px 10px 0;padding:0 8px 0 10px;border-radius:var(--r-l);background:var(--surface-2)}
+.pl-bar{position:absolute;left:14px;right:14px;top:-8px;height:18px;display:flex;align-items:center;cursor:pointer;touch-action:none}
+.pl-track{position:relative;width:100%;height:4px;border-radius:2px;background:var(--line-2)}
+.pl-fill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;background:var(--accent)}
+.pl-fill::after{content:"";position:absolute;right:-6px;top:-4px;width:12px;height:12px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px var(--surface-2)}
+.pl-main{display:flex;align-items:center;gap:6px;min-height:68px}
+.pl-art{flex:none;display:flex;align-items:flex-end;justify-content:center;gap:3px;width:40px;height:40px;padding:10px 8px;border-radius:12px;background:var(--star)}
+.pl-art i{flex:1;height:45%;border-radius:2px;background:#fff;opacity:.9}
+.pl-art i:nth-child(2){height:85%}.pl-art i:nth-child(3){height:60%}
+.player.on .pl-art i{animation:eq 1s ease-in-out infinite}
+.player.on .pl-art i:nth-child(2){animation-delay:-.35s}.player.on .pl-art i:nth-child(3){animation-delay:-.7s}
+@keyframes eq{0%,100%{height:28%}50%{height:100%}}
+.pl-meta{flex:1;min-width:0;display:flex;flex-direction:column;padding:0 6px}
+.pl-meta b{font-size:15px;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-label{font:600 12.5px var(--latin);color:var(--ink-3)}
+.player button{flex:none;display:grid;place-items:center;width:44px;height:44px;border:0;border-radius:50%;background:transparent;color:var(--ink);cursor:pointer}
+.player button:active{background:var(--surface-3)}
+.player #plRate{width:auto;min-width:46px;padding:0 8px;border-radius:999px;font:700 14px var(--latin)}
+.player .pl-play{width:52px;height:52px;background:var(--ink);color:var(--surface)}
+.player .pl-play:active{background:var(--ink-2)}
+.player .pl-play svg.i{width:22px;height:22px;fill:currentColor;stroke:none}
 
-.story{margin-top:26px}
-.story .where{font-size:19px;font-weight:700;margin:0 0 6px}
-.story h2{display:flex;gap:10px;align-items:baseline;font-size:19px;margin:24px 0 6px;line-height:1.4}
-.story h2::before{content:"";flex:none;width:12px;height:12px;background:var(--star);clip-path:polygon(50% 0,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)}
-.story ul{margin:0 0 8px;padding-left:1.2em}
-.story li{margin:0 0 8px}
-.story p{margin:0 0 10px}
-.story .next{margin-top:20px;padding:14px 16px;border-radius:12px;background:var(--mist)}
-.story .q{color:var(--muted);font-size:15px;margin:0 0 10px}
-.thinking{color:var(--muted)}
-.err{color:var(--star);font-weight:600}
-.foot{margin-top:30px;font-size:13px;color:var(--muted)}
-/* ---------- App 布局：顶栏 / 内容 / 追问栏 / 播放条 / 底部标签栏 ---------- */
-.app{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--paper);padding-top:env(safe-area-inset-top,0px)}
-.topbar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 16px;border-bottom:2px solid var(--line)}
-.topbar .title{margin:0;gap:8px}
-.topbar h1{font-family:var(--cjk);font-size:19px}
-.topbar svg.star{width:22px;height:22px}
-.loc-mini{font-size:12px;color:var(--muted);text-align:right}
-.panes{flex:1;min-height:0;position:relative}
-.pane{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:4px 16px 20px}
-#pane-map{display:flex;flex-direction:column;padding:0;overflow:hidden}
-#pane-map .map-wrap{flex:none;height:40%;margin:0}
-#pane-map #map{height:100%;min-height:0;max-height:none;border:0;border-radius:0;border-bottom:2px solid var(--line)}
-#pane-map .map-btn{bottom:14px}
-#pane-map #go{position:absolute;left:12px;bottom:14px;z-index:500;width:auto;margin:0;padding:11px 18px;border-radius:999px;font-size:16px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
-#pane-map #go svg{width:18px;height:18px}
-.sheet .row:first-child{margin-top:0}
-.sheet{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:12px 16px 20px}
-.sheet .main-btn{margin-top:0;padding:14px;font-size:18px}
-.pane-title{margin:14px 0 2px;font-size:20px;font-weight:700}
-.composer{flex:none;display:flex;gap:8px;padding:8px 12px;border-top:2px solid var(--line);background:var(--paper)}
-.composer .field{margin:0;padding:10px 14px}
-.composer button{flex:none;padding:0 18px;border:0;border-radius:12px;background:var(--sky);color:#fff;font:700 16px var(--cjk);cursor:pointer}
-.composer button:disabled{opacity:.5}
-.app .player{position:static;box-shadow:none;padding:8px 12px;border-top:2px solid var(--line)}
-.tabbar{flex:none;display:flex;border-top:2px solid var(--line);background:var(--paper);padding-bottom:env(safe-area-inset-bottom,0px)}
-.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:7px 0 5px;border:0;background:none;color:var(--muted);font:600 12px var(--cjk);cursor:pointer}
-.tabbar svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
-.tabbar button[aria-selected="true"]{color:var(--star)}
-.story{margin-top:16px}
-.turn+.turn{margin-top:18px;padding-top:14px;border-top:1px dashed var(--line)}
-.story .q{display:inline-block;margin:0 0 10px;padding:8px 12px;border-radius:12px;background:var(--mist);color:var(--ink)}
-textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
-.hide{display:none!important}
+.composer{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.composer .field{flex:1;min-width:0;margin:0;min-height:46px;padding:10px 16px;border:0;border-radius:999px;background:var(--surface-2);font-size:16px}
+.composer .field::placeholder{color:var(--ink-3)}
+.round{flex:none;display:grid;place-items:center;width:46px;height:46px;border:0;border-radius:50%;cursor:pointer;transition:transform .15s var(--ease)}
+.round:active{transform:scale(.94)}
+.round svg.i{width:22px;height:22px}
+.mic{background:var(--accent-soft);color:var(--accent)}
+.send{background:var(--accent);color:var(--on-accent)}
+.send:disabled{opacity:.45}
+
+.listen{display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 16px 10px}
+.wave{display:flex;align-items:center;justify-content:center;gap:5px;height:46px}
+.wave i{width:5px;height:8px;border-radius:3px;background:var(--star);transition:height .08s linear}
+.listen-text{min-height:24px;margin:0;max-width:100%;font-size:16px;line-height:1.5;text-align:center;color:var(--ink)}
+.listen-text.dim{color:var(--ink-3)}
+.listen-actions{display:flex;align-items:center;justify-content:center;gap:28px;margin-top:4px}
+.listen-actions .btn-quiet{min-width:88px}
+.listen-stop{display:grid;place-items:center;width:64px;height:64px;border:0;border-radius:50%;background:var(--star);color:#fff;cursor:pointer;box-shadow:0 0 0 0 rgba(228,0,43,.4)}
+.listen-stop svg{width:22px;height:22px;fill:#fff}
+.listen-stop.live{animation:ring 1.6s ease-out infinite}
+@keyframes ring{0%{box-shadow:0 0 0 0 rgba(228,0,43,.45)}100%{box-shadow:0 0 0 18px rgba(228,0,43,0)}}
+.listen-cap{font-size:12px;color:var(--ink-3)}
+
+.tabbar{display:flex;padding:2px 6px calc(var(--safe-b) + 4px)}
+.tabbar button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0 4px;border:0;background:none;color:var(--ink-3);font-size:12px;font-weight:600;cursor:pointer}
+.tabbar .ind{display:grid;place-items:center;width:58px;height:30px;border-radius:999px;transition:background .25s var(--ease)}
+.tabbar svg.i{width:23px;height:23px}
+.tabbar button[aria-selected="true"]{color:var(--ink)}
+.tabbar button[aria-selected="true"] .ind{background:var(--accent-soft);color:var(--accent)}
+
+.toast{position:absolute;left:50%;bottom:calc(100% + 12px);z-index:5;width:max-content;max-width:calc(100vw - 32px);padding:10px 16px;border-radius:14px;background:var(--ink);color:var(--surface);font-size:14px;line-height:1.5;box-shadow:var(--shadow-2);opacity:0;transform:translate(-50%,8px);pointer-events:none;transition:opacity .25s,transform .25s var(--ease)}
+.toast.show{opacity:1;transform:translate(-50%,0)}
 @media (prefers-reduced-motion:no-preference){
   .pulse svg.star{animation:p 1.4s ease-in-out infinite}
-  @keyframes p{50%{transform:scale(1.18)}}
+  @keyframes p{50%{transform:scale(1.2) rotate(30deg)}}
+}
+@media (prefers-reduced-motion:reduce){
+  .sheet{transition:none}
+  .player.on .pl-art i,.listen-stop.live,.story .thinking::before{animation:none}
+}
+@media (min-width:700px){
+  .sheet{left:16px;right:auto;width:420px;bottom:16px;border-radius:var(--r-xl)}
+  .pane:not(#pane-map){padding-left:max(16px,calc(50% - 300px));padding-right:max(16px,calc(50% - 300px))}
+  .dock{padding:0 max(0px,calc(50% - 320px))}
 }
 </style>
 </head>
 <body>
-<div class="wrap" id="setupWrap">
-  <header class="flag">
+<div class="onboard" id="setupWrap">
+  <header class="ob-hero">
+    <div class="ob-flag" aria-hidden="true"><i></i><i></i></div>
     <div class="title">
       <svg class="star" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,2 61,32 94,24 72,50 94,76 61,68 50,98 39,68 6,76 28,50 6,24 39,32"/></svg>
       <h1>Walk <span>随身导游</span></h1>
     </div>
-    <p class="sub">边走边听身边的历史、文化和故事。</p>
+    <p>走到哪讲到哪。身边的历史、文化、地理和故事，用耳朵听。</p>
   </header>
 
-  <section id="setup" class="hide">
-    <div class="status show">填入 API key 开始使用。key 只保存在这台手机的浏览器里，不会上传到别处，到期自动删除。</div>
-    <label class="lbl" for="kA">Anthropic API key（讲稿）</label>
+  <section id="setup" class="card hide">
+    <p class="ob-note">填入 API key 开始使用。key 只保存在这台手机的浏览器里，不会上传到别处，到期自动删除。</p>
+    <label class="lbl" for="kA">Anthropic API key · 生成讲稿</label>
     <input class="field secret" id="kA" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="sk-ant-…">
-    <label class="lbl" for="kO">OpenAI API key（语音，可不填，不填就用系统朗读）</label>
+    <label class="lbl" for="kO">OpenAI API key · 语音朗读和语音输入（可不填）</label>
     <input class="field secret" id="kO" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-1p-ignore data-lpignore="true" placeholder="sk-proj-…">
     <label class="lbl" for="keyTtl">在这台手机上记住 key</label>
     <select class="field" id="keyTtl">
@@ -193,152 +317,195 @@ textarea.field{resize:vertical;min-height:96px;font:16px/1.5 var(--cjk)}
       <option value="30">30 天</option>
     </select>
     <p class="err" id="keyErr" role="alert"></p>
-    <button class="main-btn" id="saveKeys">开始</button>
+    <button class="btn-primary block" id="saveKeys">开始</button>
   </section>
 </div>
 
 <div class="app hide" id="app">
-  <header class="topbar">
-    <div class="title" id="titleRow">
-      <svg class="star" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,2 61,32 94,24 72,50 94,76 61,68 50,98 39,68 6,76 28,50 6,24 39,32"/></svg>
-      <h1>随身导游</h1>
-    </div>
-    <div class="loc-mini" id="locState" aria-live="polite">还没有定位</div>
-  </header>
-
   <main class="panes">
     <!-- 地图 -->
     <section class="pane" id="pane-map" role="tabpanel" aria-label="地图">
       <div class="map-wrap" id="mapWrap">
         <div id="map" role="application" aria-label="附近景点地图"></div>
-        <button class="map-btn" id="recenter" type="button" aria-label="回到我的位置">◎</button>
-        <button class="main-btn" id="go" type="button">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
-          讲讲我附近
-        </button>
       </div>
-      <div class="sheet" id="sheet-map">
-        <div class="row">
-          <button class="ghost" id="autoBtn" aria-pressed="false">自动讲解：关</button>
-          <button class="ghost" id="voiceBtn" aria-pressed="true">朗读：开</button>
+      <header class="topbar glass">
+        <div class="title" id="titleRow">
+          <svg class="star" viewBox="0 0 100 100" aria-hidden="true"><polygon points="50,2 61,32 94,24 72,50 94,76 61,68 50,98 39,68 6,76 28,50 6,24 39,32"/></svg>
+          随身导游
         </div>
-        <div class="row hide" id="stopRow"><button class="ghost" id="stopBtn">停止</button></div>
-        <div class="status" id="status" role="status"></div>
-        <article class="story" id="story-map" aria-live="polite">
-          <p class="hint">点地图上的照片听讲解，或者点「讲讲我附近」。讲完可以在下面接着问。</p>
-        </article>
+        <span class="loc-mini" id="locState" aria-live="polite">还没有定位</span>
+      </header>
+      <div class="sheet" id="sheet-map" data-detent="half">
+        <button class="fab glass" id="recenter" type="button" aria-label="回到我的位置"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg></button>
+        <div class="sheet-head" id="sheetHead">
+          <button class="grabber" id="grabber" type="button" aria-label="展开或收起讲解面板"></button>
+          <div class="actions">
+            <button class="btn-primary" id="go" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>讲讲我附近</button>
+            <button class="toggle" id="autoBtn" type="button" aria-pressed="false"><span class="dot"></span>自动讲解</button>
+            <button class="toggle" id="voiceBtn" type="button" aria-pressed="true"><span class="dot"></span>朗读</button>
+          </div>
+          <div class="row hide" id="stopRow"><button class="btn-quiet" id="stopBtn" type="button">停止生成</button></div>
+          <div class="status" id="status" role="status"></div>
+        </div>
+        <div class="sheet-body" id="sheetBody">
+          <article class="story" id="story-map" aria-live="polite">
+            <div class="empty"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg><span>点地图上的照片听讲解，或者点「讲讲我附近」。打开「自动讲解」后，边走边开车都会一段接一段地讲。</span></div>
+          </article>
+        </div>
       </div>
     </section>
 
     <!-- 展板 -->
     <section class="pane hide" id="pane-photo" role="tabpanel" aria-label="展板">
-      <p class="pane-title">展板讲解</p>
-      <p class="hint">拍下一张或几张展板，整理成中文讲解并朗读。讲完可以在下面接着问。</p>
+      <header class="large-title"><h2>展板</h2><p>拍下展板或说明牌，整理成中文讲给你听。</p></header>
       <div class="seg" role="group" aria-label="讲解方式">
         <button id="pmSent" type="button" aria-pressed="false">按句翻译</button>
         <button id="pmDense" type="button" aria-pressed="true">精炼讲解</button>
       </div>
       <p class="hint" id="pmHint"></p>
-      <div class="row">
-        <button class="ghost" id="camBtn" type="button">📷 拍一张</button>
-        <button class="ghost" id="albumBtn" type="button">从相册选</button>
+      <div class="capture">
+        <button class="tile tile-main" id="camBtn" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg><b>拍一张</b><small>可以连拍几张，一起讲</small></button>
+        <button class="tile" id="albumBtn" type="button"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg><b>从相册选</b><small>最多 8 张</small></button>
       </div>
       <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
       <input type="file" id="albumInput" accept="image/*" multiple hidden>
-      <div id="trayBox" class="hide">
+      <div id="trayBox" class="card hide">
         <div class="tray" id="tray"></div>
         <p class="hint" id="trayHint"></p>
         <div class="row">
-          <button class="ghost" id="trayClear" type="button">清空</button>
-          <button class="ghost" id="trayMore" type="button">再拍一张</button>
+          <button class="btn-quiet" id="trayClear" type="button">清空</button>
+          <button class="btn-quiet" id="trayMore" type="button">再拍一张</button>
         </div>
-        <button class="main-btn" id="cropGo" type="button">讲解这些照片</button>
+        <button class="btn-primary block" id="cropGo" type="button">讲解这些照片</button>
       </div>
-      <div id="cropBox" class="hide">
-        <p class="hint">手指拖动框选要讲的部分；不框选就自动找出说明文字。</p>
+      <div id="cropBox" class="card hide">
+        <p class="hint" style="margin-top:0">手指拖动框选要讲的部分；不框选就自动找出说明文字。</p>
         <div class="crop-wrap"><canvas id="cropCanvas"></canvas></div>
         <div class="row">
-          <button class="ghost" id="cropClear" type="button">清除选区</button>
-          <button class="ghost" id="cropDelete" type="button">删除这张</button>
+          <button class="btn-quiet" id="cropClear" type="button">清除选区</button>
+          <button class="btn-quiet" id="cropDelete" type="button">删除这张</button>
         </div>
-        <button class="main-btn" id="cropDone" type="button">完成</button>
+        <button class="btn-primary block" id="cropDone" type="button">完成</button>
       </div>
       <article class="story" id="story-photo" aria-live="polite"></article>
     </section>
 
     <!-- 设置 -->
     <section class="pane hide" id="pane-settings" role="tabpanel" aria-label="设置">
-      <p class="pane-title">设置</p>
-      <section class="loc">
-        <div class="state">定位</div>
-        <div class="coords" id="coords">还没有定位</div>
-      </section>
-      <label class="lbl" for="note">补充说明（写一句你看到的东西，定位会准很多）</label>
-      <input class="field" id="note" type="text" placeholder="例如：我面前是一栋黑色玻璃高楼，右边是红色的桥">
-      <label class="lbl">想听的方向</label>
-      <div class="chips" id="chips">
-        <label class="chip"><input type="checkbox" value="历史事件和人物" checked><span>历史</span></label>
-        <label class="chip"><input type="checkbox" value="城市文化和习俗" checked><span>文化</span></label>
-        <label class="chip"><input type="checkbox" value="冷知识和意想不到的事实" checked><span>冷知识</span></label>
-        <label class="chip"><input type="checkbox" value="地理和自然：地形地貌、湖泊河流、气候、城市为什么长在这里、这里原来是什么样" checked><span>地理</span></label>
-        <label class="chip"><input type="checkbox" value="建筑和设计师"><span>建筑</span></label>
-        <label class="chip"><input type="checkbox" value="美食"><span>美食</span></label>
-        <label class="chip"><input type="checkbox" value="影视取景"><span>影视取景</span></label>
-        <label class="chip"><input type="checkbox" value="拍照机位"><span>拍照机位</span></label>
+      <header class="large-title"><h2>设置</h2></header>
+
+      <h3 class="group-title">讲什么</h3>
+      <div class="group">
+        <div class="cell col">
+          <span class="k">想听的方向</span>
+          <div class="chips" id="chips">
+            <label class="chip"><input type="checkbox" value="历史事件和人物" checked><span>历史</span></label>
+            <label class="chip"><input type="checkbox" value="城市文化和习俗" checked><span>文化</span></label>
+            <label class="chip"><input type="checkbox" value="冷知识和意想不到的事实" checked><span>冷知识</span></label>
+            <label class="chip"><input type="checkbox" value="地理和自然：地形地貌、湖泊河流、气候、城市为什么长在这里、这里原来是什么样" checked><span>地理</span></label>
+            <label class="chip"><input type="checkbox" value="建筑和设计师"><span>建筑</span></label>
+            <label class="chip"><input type="checkbox" value="美食"><span>美食</span></label>
+            <label class="chip"><input type="checkbox" value="影视取景"><span>影视取景</span></label>
+            <label class="chip"><input type="checkbox" value="拍照机位"><span>拍照机位</span></label>
+          </div>
+        </div>
+        <div class="cell">
+          <label for="stylePreset">讲解风格</label>
+          <select class="sel" id="stylePreset">
+            <option value="default">挑重要的讲</option>
+            <option value="brief">简短</option>
+            <option value="story">故事型</option>
+            <option value="fun">轻松幽默</option>
+            <option value="kids">讲给孩子听</option>
+            <option value="expert">深度专业</option>
+          </select>
+        </div>
+        <div class="cell col">
+          <label for="customPrompt">自定义要求</label>
+          <textarea class="field" id="customPrompt" rows="4" placeholder="例如：多讲和中国有关的联系；提到电影时告诉我片名和年份；不用讲建筑风格"></textarea>
+          <p class="hint" id="styleSaved">讲解、展板和追问都会带上，自动保存。</p>
+        </div>
       </div>
-      <label class="lbl" for="stylePreset">讲解风格</label>
-      <select class="field" id="stylePreset">
-        <option value="default">默认：挑重要的讲</option>
-        <option value="brief">简短：只说最关键的</option>
-        <option value="story">故事型：像讲一段往事</option>
-        <option value="fun">轻松幽默</option>
-        <option value="kids">讲给孩子听</option>
-        <option value="expert">深度专业</option>
-      </select>
-      <label class="lbl" for="customPrompt">自定义要求（讲解、展板和追问都会带上）</label>
-      <textarea class="field" id="customPrompt" rows="4" placeholder="例如：多讲和中国有关的联系；提到电影时告诉我片名和年份；不用讲建筑风格"></textarea>
-      <p class="hint" id="styleSaved">风格和自定义要求会自动保存，对下一次讲解生效。</p>
-      <label class="lbl" for="ttsModel">语音引擎（OpenAI）</label>
-      <select class="field" id="ttsModel">
-        <option value="tts-1" selected>快速（tts-1，默认）</option>
-        <option value="gpt-4o-mini-tts">更自然（gpt-4o-mini-tts，较慢）</option>
-      </select>
-      <label class="lbl" for="voice">语音音色（OpenAI）</label>
-      <select class="field" id="voice">
-        <option value="nova">nova</option><option value="coral">coral</option><option value="alloy">alloy</option>
-        <option value="shimmer">shimmer</option><option value="echo">echo</option><option value="onyx">onyx</option>
-      </select>
-      <label class="lbl" for="rate">朗读速度</label>
-      <select class="field" id="rate">
-        <option value="1">1.0 倍</option><option value="1.25">1.25 倍</option><option value="1.5" selected>1.5 倍</option>
-        <option value="1.75">1.75 倍</option><option value="2">2.0 倍</option>
-      </select>
-      <div class="row"><button class="ghost" id="resetKeys">更换 API key</button></div>
-      <p class="hint" id="keyExp"></p>
-      <p class="hint" id="perfLine"></p>
-      <p class="hint">自动讲解：每讲完一段就马上接着讲附近还没讲过的、最重要的一个；附近都讲完了，就等你走出约 150 米再继续。连续 30 段后暂停。App 要保持在前台，锁屏后定位会停。</p>
-      <p class="foot">讲解由 AI 结合公开资料生成，具体数字和年份请以权威资料为准。</p>
+
+      <h3 class="group-title">声音</h3>
+      <div class="group">
+        <div class="cell">
+          <label for="rate">朗读速度</label>
+          <select class="sel" id="rate">
+            <option value="1">1.0×</option><option value="1.25">1.25×</option><option value="1.5" selected>1.5×</option>
+            <option value="1.75">1.75×</option><option value="2">2.0×</option>
+          </select>
+        </div>
+        <div class="cell">
+          <label for="ttsModel">语音引擎</label>
+          <select class="sel" id="ttsModel">
+            <option value="tts-1" selected>快速 tts-1</option>
+            <option value="gpt-4o-mini-tts">更自然（较慢）</option>
+          </select>
+        </div>
+        <div class="cell">
+          <label for="voice">音色</label>
+          <select class="sel" id="voice">
+            <option value="nova">nova</option><option value="coral">coral</option><option value="alloy">alloy</option>
+            <option value="shimmer">shimmer</option><option value="echo">echo</option><option value="onyx">onyx</option>
+          </select>
+        </div>
+        <div class="cell col"><span class="k">语音输入</span><p class="hint" id="micInfo" style="margin:0"></p></div>
+      </div>
+
+      <h3 class="group-title">位置</h3>
+      <div class="group">
+        <div class="cell col"><span class="k">当前定位</span><div class="coords" id="coords">还没有定位</div></div>
+        <div class="cell col">
+          <label for="note">补充说明</label>
+          <input class="field" id="note" type="text" placeholder="写一句你看到的东西，定位会准很多">
+        </div>
+      </div>
+
+      <h3 class="group-title">账户</h3>
+      <div class="group">
+        <div class="cell"><button class="cell-btn" id="resetKeys" type="button">更换 API key</button></div>
+        <div class="cell col"><p class="hint" id="keyExp" style="margin:0"></p><p class="hint" id="perfLine" style="margin:0"></p></div>
+      </div>
+      <p class="foot">自动讲解：每讲完一段就接着讲附近还没讲过、最重要的一个；附近都讲完了，就往外扩展到这条路、这座城、这个州。连续 30 段后暂停。App 要保持在前台，锁屏后定位会停。<br>讲解由 AI 结合公开资料生成，具体数字和年份请以权威资料为准。</p>
     </section>
   </main>
 
-  <div class="composer" id="composer">
-    <input class="field" id="question" type="text" placeholder="接着问，或者问导游任何问题…" enterkeyhint="send" aria-label="追问">
-    <button id="askBtn" type="button">问</button>
-  </div>
+  <div class="dock" id="dock">
+    <div class="player hide" id="player" role="region" aria-label="正在讲">
+      <div class="pl-bar" id="plBar" role="slider" aria-label="朗读进度"><div class="pl-track"><div class="pl-fill" id="plFill"></div></div></div>
+      <div class="pl-main">
+        <div class="pl-art" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="pl-meta"><b id="plTitle">讲解</b><span class="pl-label" id="plLabel">0/0 段</span></div>
+        <button id="plReplay" type="button" aria-label="从头播放"><svg class="i" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4.5h4.5"/></svg></button>
+        <button id="plRate" type="button" aria-label="朗读速度，点一下切换">1.5×</button>
+        <button id="plToggle" class="pl-play" type="button" aria-label="暂停"></button>
+      </div>
+    </div>
 
-  <div class="player hide" id="player" role="region" aria-label="朗读控制">
-    <button id="plToggle" type="button" aria-label="暂停">❚❚</button>
-    <button id="plReplay" type="button" aria-label="从头播放">↺</button>
-    <button id="plRate" type="button" aria-label="朗读速度，点一下切换">1.5×</button>
-    <div class="pl-bar" id="plBar" role="slider" aria-label="朗读进度"><div class="pl-track"><div class="pl-fill" id="plFill"></div></div></div>
-    <span class="pl-label" id="plLabel">0/0 段</span>
-  </div>
+    <div class="listen hide" id="listenBox" role="dialog" aria-label="语音输入">
+      <div class="wave" id="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <p class="listen-text dim" id="listenText" aria-live="polite">在听，请说…</p>
+      <div class="listen-actions">
+        <button class="btn-quiet" id="listenCancel" type="button">取消</button>
+        <button class="listen-stop live" id="listenDone" type="button" aria-label="说完了"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg></button>
+        <span class="btn-quiet" style="visibility:hidden;min-width:88px" aria-hidden="true"></span>
+      </div>
+      <span class="listen-cap">说完停一下会自动发送</span>
+    </div>
 
-  <nav class="tabbar" role="tablist">
-    <button type="button" role="tab" data-tab="map" aria-selected="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>地图</button>
-    <button type="button" role="tab" data-tab="photo" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h3l2-3h6l2 3h3v13H4z"/><circle cx="12" cy="13" r="4"/></svg>展板</button>
-    <button type="button" role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9 7 7M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>设置</button>
-  </nav>
+    <div class="composer" id="composer">
+      <input class="field" id="question" type="text" placeholder="接着问，或者问导游任何问题…" enterkeyhint="send" aria-label="追问" autocomplete="off">
+      <button class="round mic" id="micBtn" type="button" aria-label="语音提问"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg></button>
+      <button class="round send hide" id="askBtn" type="button" aria-label="发送"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+    </div>
+
+    <nav class="tabbar" role="tablist">
+      <button type="button" role="tab" data-tab="map" aria-selected="true"><span class="ind"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6z"/><path d="M9 4v14M15 6v14"/></svg></span>地图</button>
+      <button type="button" role="tab" data-tab="photo" aria-selected="false"><span class="ind"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.6"/></svg></span>展板</button>
+      <button type="button" role="tab" data-tab="settings" aria-selected="false"><span class="ind"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></span>设置</button>
+    </nav>
+  </div>
 </div>
 <script>
 const MODEL = "claude-sonnet-5-5";
@@ -352,6 +519,7 @@ const threads = { map: { msgs: [], turn: null }, photo: { msgs: [], turn: null }
 function newTurn(k, fresh){
   const box = document.getElementById("story-" + k), t = threads[k];
   if (fresh) { box.innerHTML = ""; t.msgs = []; }
+  box.querySelector(".empty")?.remove();
   t.turn = document.createElement("div"); t.turn.className = "turn";
   box.appendChild(t.turn);
   return t.turn;
@@ -374,7 +542,7 @@ const speechRate = () => parseFloat(document.getElementById("rate")?.value || "1
 const player = new Audio(); player.preload = "auto"; player.setAttribute("playsinline", "");
 
 /* ---------- 初始化 ---------- */
-function showApp(){ $("setupWrap").classList.add("hide"); $("app").classList.remove("hide"); if (map) setTimeout(() => map.invalidateSize(), 50); }
+function showApp(){ $("setupWrap").classList.add("hide"); $("app").classList.remove("hide"); if (map) setTimeout(() => map.invalidateSize(), 50); syncComposer(); requestAnimationFrame(() => { const s = sheetState; sheetState = ""; setDetent(s || "half", false); }); }
 function showSetup(){ $("app").classList.add("hide"); $("setupWrap").classList.remove("hide"); $("setup").classList.remove("hide"); }
 for (const id of ["voice", "rate", "stylePreset", "ttsModel"]) {
   const v = store.get("wg_" + id); if (v) $(id).value = v;
@@ -429,18 +597,18 @@ async function bootMap(){
     await gatherNearby();
     if (map && places.length) {   // 把最近的几个景点和你一起框进视野
       const pts = places.slice(0, 6).map(p => [p.lat, p.lon]).concat([[pos.coords.latitude, pos.coords.longitude]]);
-      map.fitBounds(pts, { padding: [50, 50], maxZoom: 17 });
+      map.fitBounds(pts, { paddingTopLeft: [40, 70], paddingBottomRight: [40, (window.innerWidth < 700 ? sheetPx() : 0) + 30], maxZoom: 17 });
     }
     $("story").innerHTML = places.length
-      ? `<p>附近找到 ${places.length} 个景点，已经标在地图上了。点照片就开讲，或者点「讲讲我附近」让我挑最近的讲。</p>`
-      : "<p>这附近没查到带资料的景点。可以点「讲讲我附近」试试。</p>";
+      ? `<div class="empty">${EMPTY_ICON}<span>附近找到 ${places.length} 个景点，已经标在地图上了。点照片就开讲，或者点「讲讲我附近」让我挑最重要的讲。打开「自动讲解」后，边走边开车都会一段接一段地讲。</span></div>`
+      : `<div class="empty">${EMPTY_ICON}<span>这附近没查到带资料的景点。点「讲讲我附近」，我会从这条路、这座城讲起。</span></div>`;
   } catch (e) {
     $("locState").textContent = "没有定位"; $("coords").textContent = geoErr(e);
     $("mapWrap").classList.add("hide");
     $("story").innerHTML = `<p class="err">${esc(geoErr(e))}</p>`;
   }
 }
-$("recenter").onclick = () => { if (map && pos) { followed = true; map.setView([pos.coords.latitude, pos.coords.longitude], 17); } };
+$("recenter").onclick = () => { if (map && pos) { followed = true; centerOn([pos.coords.latitude, pos.coords.longitude], 17); } };
 $("rate").addEventListener("change", () => { player.defaultPlaybackRate = player.playbackRate = speechRate(); });
 $("resetKeys").onclick = () => { store.del("wg_kA"); store.del("wg_kO"); try { localStorage.removeItem("wg_keys"); } catch (_) {} stopAuto(); showSetup(); };
 
@@ -617,6 +785,7 @@ function initMap(lat, lon){
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
+  map.attributionControl.setPosition("topright"); map.attributionControl.setPrefix(false);
   placeLayer = L.layerGroup().addTo(map);
   meRing = L.circle([lat, lon], { radius: 30, color: "#1a73e8", weight: 1, fillColor: "#1a73e8", fillOpacity: .12, interactive: false }).addTo(map);
   meDot = L.circleMarker([lat, lon], { radius: 8, color: "#fff", weight: 3, fillColor: "#1a73e8", fillOpacity: 1, interactive: false }).addTo(map);
@@ -629,7 +798,7 @@ function updateMe(){
   if (!map) initMap(lat, lon);
   if (!map) return;
   meDot.setLatLng([lat, lon]); meRing.setLatLng([lat, lon]).setRadius(Math.min(accuracy, 300));
-  if (followed) map.panTo([lat, lon], { animate: true });
+  if (followed) centerOn([lat, lon]);
 }
 function renderPlaces(){
   if (!map || !placeLayer) return;
@@ -819,7 +988,7 @@ function render(text, question){
     const isLi = /^[-•*]\s+/.test(line);
     if (inList && !isLi) { html += "</ul>"; inList = false; }
     if (line.startsWith("📍")) html += `<p class="where">${esc(line)}</p>`;
-    else if (line.startsWith("## ")) html += `<h2>${esc(line.slice(3))}</h2>`;
+    else if (line.startsWith("## ")) html += h2html(line.slice(3));
     else if (line.startsWith("➜")) html += `<p class="next">${esc(line)}</p>`;
     else if (isLi) { if (!inList) { html += "<ul>"; inList = true; } html += `<li>${esc(line.replace(/^[-•*]\s+/, ""))}</li>`; }
     else html += `<p>${esc(line)}</p>`;
@@ -984,7 +1153,9 @@ function updatePlayer(){
   bar.classList.toggle("hide", !show); document.body.classList.toggle("has-player", show);
   if (!show) return;
   const on = playing && !paused;
-  $("plToggle").textContent = on ? "❚❚" : "▶";
+  if ($("plToggle").dataset.on !== String(on)) { $("plToggle").dataset.on = String(on); $("plToggle").innerHTML = on ? ICON_PAUSE : ICON_PLAY; }
+  bar.classList.toggle("on", on && mode !== "wait");
+  $("plTitle").textContent = nowTitle || "讲解";
   $("plToggle").setAttribute("aria-label", on ? "暂停" : "播放");
   if (!plDrag) $("plFill").style.width = (speechProgress() * 100).toFixed(1) + "%";
   $("plRate").textContent = speechRate() + "×";
@@ -1044,7 +1215,7 @@ function errText(e){
   if (e?.name === "AbortError") return "";
   if (e?.status === 401) {
     const k = store.get("wg_kA");
-    return `Anthropic 拒绝了这个 key（${e.msg || "401"}）。页面收到的 key 是 ${k.slice(0, 14)}…${k.slice(-4)}，共 ${k.length} 位，和你的 key 对一下。不一致的话，点「补充说明、兴趣和设置」→「更换 API key」重新粘贴。`;
+    return `Anthropic 拒绝了这个 key（${e.msg || "401"}）。页面收到的 key 是 ${k.slice(0, 14)}…${k.slice(-4)}，共 ${k.length} 位，和你的 key 对一下。不一致的话，到「设置」→「更换 API key」重新粘贴。`;
   }
   if (e?.status === 404) return "模型不可用。";
   if (e?.status === 429) return "请求太频繁或额度不足，自动讲解已暂停，稍后再试。";
@@ -1062,9 +1233,11 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
   writeTo = pane;
   const turn = newTurn(pane, !follow && !auto);
   if (follow) setTimeout(() => turn.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
-  else document.getElementById(pane === "map" ? "sheet-map" : "pane-photo").scrollTo({ top: 0, behavior: "smooth" });
+  else document.getElementById(pane === "map" ? "sheetBody" : "pane-photo").scrollTo({ top: 0, behavior: "smooth" });
   $("go").disabled = true; $("askBtn").disabled = true;
   $("titleRow").classList.add("pulse");
+  nowTitle = photo ? "展板讲解" : (question || follow) ? "回答 · " + (question || follow) : focus ? focus : auto ? "自动讲解" : "附近讲解";
+  if (!auto && pane === "map") raiseSheet();
 
   if (!auto && !focus && !photo && !follow) {
     $("locState").textContent = "正在定位…";
@@ -1126,7 +1299,7 @@ async function run({ auto = false, question = "", focus = "", picked = false, ph
     const q = question || follow;
     perf.ask = performance.now();
     const nothing = t => auto && t.trim().length <= 11 && "NOTHING_NEW".startsWith(t.trim());
-    const text = await streamClaude(prompt, t => { if (!perf.first) perf.first = performance.now(); if (nothing(t)) return; render(t, q); flush(t, false); }, ctl.signal);
+    const text = await streamClaude(prompt, t => { if (!perf.first) perf.first = performance.now(); if (nothing(t)) return; render(t, q); if (!q && !photo) grabTitle(t); flush(t, false); }, ctl.signal);
     if (auto && text.trim() === "NOTHING_NEW") {
       turn.remove(); threads[pane].turn = null; waitingMove = true;
       status("附近值得讲的都讲完了。往前走一走，走出约 150 米会接着讲。");
@@ -1211,13 +1384,13 @@ function startAuto(){
   autoOn = true; autoCount = 0; lastAuto = null;
   waitingMove = false;
   unlockAudio(); keepAwake(); startWatch();
-  $("autoBtn").setAttribute("aria-pressed", "true"); $("autoBtn").textContent = "自动讲解：开";
+  $("autoBtn").setAttribute("aria-pressed", "true");
   if (!busy && !playing) autoNext(); else status("这段讲完就接着自动讲。");
 }
 function stopAuto(){
   autoOn = false;
   if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-  $("autoBtn").setAttribute("aria-pressed", "false"); $("autoBtn").textContent = "自动讲解：关";
+  $("autoBtn").setAttribute("aria-pressed", "false");
   if ($("locState").textContent === "自动讲解中") $("locState").textContent = "已定位";
   status("");
 }
@@ -1229,17 +1402,17 @@ $("stopBtn").onclick = () => { ctl?.abort(); resetSpeech(); };
 $("voiceBtn").onclick = () => {
   voiceOn = !voiceOn;
   $("voiceBtn").setAttribute("aria-pressed", voiceOn);
-  $("voiceBtn").textContent = voiceOn ? "朗读：开" : "朗读：关";
   if (voiceOn) unlockAudio(); else resetSpeech();
 };
 const ask = () => {
   const q = $("question").value.trim(); if (!q) return;
   const k = activeTab === "photo" ? "photo" : "map";
-  if (k === "photo" && !threads.photo.msgs.length) { $("trayHint").textContent = "先拍照讲解一次，再接着问。"; $("camBtn").focus(); return; }
-  $("question").value = ""; $("question").blur(); unlockAudio();
+  if (k === "photo" && !threads.photo.msgs.length) { $("trayHint").textContent = "先拍照讲解一次，再接着问。"; toast("先拍照讲解一次，再接着问。"); $("camBtn").focus(); return false; }
+  $("question").value = ""; $("question").blur(); syncComposer(); unlockAudio();
   if (busy) { ctl?.abort(); }
   const go = () => threads[k].msgs.length ? run({ follow: q }) : run({ question: q });
   if (busy) { const w = setInterval(() => { if (!busy) { clearInterval(w); go(); } }, 100); } else go();
+  return true;
 };
 $("askBtn").onclick = ask;
 $("question").addEventListener("keydown", e => { if (e.key === "Enter") ask(); });
@@ -1378,6 +1551,7 @@ $("plRate").onclick = () => {
 
 /* ---------- 讲解下面的按钮 ---------- */
 function speakText(text){
+  { const m = text.match(/^##\s*([^（(\n]+)/m); if (m) nowTitle = m[1].trim(); }
   resetSpeech(); unlockAudio();
   const parts = text.split("\n").filter(l => l.trim() && !/^##\s/.test(l)).join("\n").match(/[^。！？!?\n]+[。！？!?]*\n?/g) || [];
   let buf = "";
@@ -1408,14 +1582,15 @@ function showFull(u){
 
 /* ---------- 底部标签栏 ---------- */
 function showTab(k){
-  activeTab = k;
+  if (rec) stopListening(true);
+  activeTab = k; document.body.dataset.tab = k;
   for (const t of ["map", "photo", "settings"]) {
     $("pane-" + t).classList.toggle("hide", t !== k);
     document.querySelector(`.tabbar [data-tab="${t}"]`).setAttribute("aria-selected", t === k);
   }
   $("composer").classList.toggle("hide", k === "settings");
   $("question").placeholder = k === "photo" ? "对展板内容接着问…" : "接着问，或者问导游任何问题…";
-  if (k === "map" && map) setTimeout(() => map.invalidateSize(), 50);
+  if (k === "map") { requestAnimationFrame(() => { const s = sheetState; sheetState = ""; setDetent(s || "half", false); }); if (map) setTimeout(() => map.invalidateSize(), 50); }
 }
 document.querySelectorAll(".tabbar [data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 
@@ -1435,6 +1610,280 @@ $("stylePreset").addEventListener("change", () => { $("styleSaved").textContent 
   document.querySelectorAll("#chips input").forEach(i => i.addEventListener("change", () =>
     store.set("wg_chips", JSON.stringify([...document.querySelectorAll("#chips input:checked")].map(x => x.value)))));
 }
+
+/* ============================================================
+   新界面：可拖动面板、正在讲卡片、语音输入
+   （这里都用 var / function，避免启动早期调用时的暂时性死区）
+   ============================================================ */
+var EMPTY_ICON = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg>';
+var sheetState = "half", nowTitle = "", sheetDrag = null, sheetDragged = false;
+var ICON_PLAY = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.2v13.6L18.8 12z"/></svg>';
+var ICON_PAUSE = '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.3"/><rect x="13.5" y="5" width="4" height="14" rx="1.3"/></svg>';
+
+/* ---------- 面板三档：peek（只露按钮）/ half / full ---------- */
+function sheetHeights(){
+  const H = $("pane-map").clientHeight || Math.round(window.innerHeight * .7);
+  const peek = Math.min(H - 40, $("sheetHead").offsetHeight + 4);
+  return { peek, half: Math.max(peek + 80, Math.round(H * .5)), full: Math.max(peek + 80, H - 4) };
+}
+function sheetPx(){ return $("sheet-map").offsetHeight || 0; }
+function setDetent(d, anim = true){
+  if (!$("pane-map").clientHeight) { sheetState = d; return; }
+  const el = $("sheet-map"), changed = d !== sheetState;
+  sheetState = d;
+  el.classList.toggle("dragging", !anim);
+  el.style.height = sheetHeights()[d] + "px";
+  el.dataset.detent = d;
+  if (!anim) requestAnimationFrame(() => el.classList.remove("dragging"));
+  $("grabber").setAttribute("aria-label", d === "full" ? "收起讲解面板" : "展开讲解面板");
+  if (changed && followed && pos) setTimeout(() => centerOn([pos.coords.latitude, pos.coords.longitude]), anim ? 400 : 0);
+}
+function raiseSheet(){ if (sheetState === "peek") setDetent("half"); }
+$("grabber").onclick = () => { if (sheetDragged) return; setDetent(sheetState === "peek" ? "half" : sheetState === "half" ? "full" : "peek"); };
+$("sheetHead").addEventListener("pointerdown", e => {
+  if (e.button > 0) return;
+  const now = performance.now();
+  sheetDrag = { y: e.clientY, h: sheetPx(), id: e.pointerId, moved: false, lastY: e.clientY, lastT: now, v: 0 };
+});
+window.addEventListener("pointermove", e => {
+  const d = sheetDrag; if (!d || e.pointerId !== d.id) return;
+  const dy = e.clientY - d.y;
+  if (!d.moved && Math.abs(dy) < 7) return;
+  if (!d.moved) { d.moved = true; $("sheet-map").classList.add("dragging"); }
+  const hs = sheetHeights(), now = performance.now();
+  d.v = (e.clientY - d.lastY) / Math.max(1, now - d.lastT); d.lastY = e.clientY; d.lastT = now;
+  $("sheet-map").style.height = Math.max(hs.peek - 24, Math.min(hs.full, d.h - dy)) + "px";
+});
+function endSheetDrag(e){
+  const d = sheetDrag; if (!d || e.pointerId !== d.id) return;
+  sheetDrag = null;
+  if (!d.moved) return;
+  sheetDragged = true; setTimeout(() => { sheetDragged = false; }, 60);
+  $("sheet-map").classList.remove("dragging");
+  const hs = sheetHeights(), aim = sheetPx() - d.v * 220;   // 甩得快就顺势去下一档
+  const best = ["peek", "half", "full"].reduce((a, k) => Math.abs(hs[k] - aim) < Math.abs(hs[a] - aim) ? k : a, "half");
+  sheetState = "";   // 强制重新应用
+  setDetent(best);
+}
+window.addEventListener("pointerup", endSheetDrag);
+window.addEventListener("pointercancel", endSheetDrag);
+$("sheetHead").addEventListener("click", e => { if (sheetDragged) { e.stopPropagation(); e.preventDefault(); } }, true);
+window.addEventListener("resize", () => { const s = sheetState; sheetState = ""; setDetent(s || "half", false); });
+if (window.ResizeObserver) new ResizeObserver(() => { if (sheetState === "peek") { sheetState = ""; setDetent("peek"); } }).observe($("sheetHead"));
+
+/* 地图中心往上挪半个面板，让"我"不被面板挡住 */
+function centerOn(ll, z){
+  if (!map) return;
+  z = z ?? map.getZoom();
+  const H = $("pane-map").clientHeight;
+  const cover = window.innerWidth < 700 ? Math.min(sheetPx(), H * .7) : 0;
+  const p = map.project(L.latLng(ll), z).add([0, cover / 2]);
+  map.setView(map.unproject(p, z), z, { animate: true });
+}
+
+/* ---------- 讲解标题：名字 + 方向距离小标签 ---------- */
+function h2html(s){
+  const m = s.match(/^(.+?)\s*[（(]([^）)]*)[）)]\s*$/);
+  if (!m) return `<h2><span class="t">${esc(s)}</span></h2>`;
+  return `<h2><span class="t">${esc(m[1])}</span><span class="m">${esc(m[2].replace(/[，,]\s*/g, " · "))}</span></h2>`;
+}
+function grabTitle(t){
+  if (nowTitle && !/^(自动讲解|附近讲解)$/.test(nowTitle)) return;
+  const m = t.match(/^##\s*([^（(\n]+)/m); if (m) nowTitle = m[1].trim();
+}
+new MutationObserver(() => { $("locState").dataset.on = /已定位|自动/.test($("locState").textContent) ? "1" : ""; })
+  .observe($("locState"), { childList: true, characterData: true, subtree: true });
+
+/* ---------- 小提示 ---------- */
+function toast(msg){
+  let t = document.getElementById("toast");
+  if (!t) { t = document.createElement("div"); t.id = "toast"; t.className = "toast"; t.setAttribute("role", "status"); $("dock").appendChild(t); }
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("show"), 4200);
+}
+
+/* ============================================================
+   语音输入
+   · 有 OpenAI key：录音 → gpt-4o-mini-transcribe 转文字（装成 App 后 iOS 的系统识别常常用不了，这条最稳）
+   · 没有 OpenAI key：用浏览器自带的语音识别（能用的话）
+   · 开始听时先暂停讲解；取消就接着讲；说完停顿约 1.6 秒自动发送
+   ============================================================ */
+var rec = null;
+function micEngine(){
+  const canRec = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  if (store.get("wg_kO") && canRec) return "openai";
+  if (window.SpeechRecognition || window.webkitSpeechRecognition) return "web";
+  return "";
+}
+function syncComposer(){
+  const has = !!$("question").value.trim(), eng = micEngine();
+  $("askBtn").classList.toggle("hide", !has && !!eng);
+  $("micBtn").classList.toggle("hide", has || !eng);
+  const info = document.getElementById("micInfo");
+  if (info) info.textContent = eng === "openai" ? "点输入框右边的麦克风说话，用 OpenAI 转文字，中英文混着说也行。"
+    : eng === "web" ? "用手机自带的语音识别。识别不了的话，填上 OpenAI key 会更稳。"
+    : "这台设备不支持语音输入。填上 OpenAI key 后可以用。";
+}
+$("question").addEventListener("input", syncComposer);
+function setListenUI(on){
+  $("listenBox").classList.toggle("hide", !on);
+  $("composer").classList.toggle("hide", on || activeTab === "settings");
+}
+function drawWave(lvl){
+  const bars = $("wave").children, n = bars.length;
+  const amp = Math.min(1, lvl * 9);
+  for (let i = 0; i < n; i++) {
+    const shape = 1 - Math.abs(i - (n - 1) / 2) / ((n - 1) / 2) * .6;
+    bars[i].style.height = (6 + amp * 40 * shape * (.75 + Math.random() * .5)).toFixed(1) + "px";
+  }
+}
+function startListening(){
+  if (rec) return;
+  const eng = micEngine();
+  if (!eng) { toast("这台设备不支持语音输入，可以打字问。"); return; }
+  const wasPlaying = playing && !paused;
+  if (wasPlaying) pauseSpeech(); else unlockAudio();
+  const r = rec = { eng, wasPlaying, t0: Date.now(), heard: false, last: Date.now(), done: false, floor: 0 };
+  // AudioContext 要在点击的这一刻建，不然 iOS 上会一直是暂停状态
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (eng === "openai" && AC) { try { r.ctx = new AC(); r.ctx.resume().catch(() => {}); } catch (_) {} }
+  $("listenText").textContent = "在听，请说…"; $("listenText").classList.add("dim");
+  $("listenDone").classList.add("live");
+  setListenUI(true);
+  (eng === "openai" ? recStartOpenAI(r) : Promise.resolve(recStartWeb(r))).catch(e => {
+    if (rec !== r) return;
+    stopListening(true);
+    const name = e && e.name;
+    toast(name === "NotAllowedError" ? "没有麦克风权限。到 iPhone 设置 → Safari → 麦克风 里允许后再试。" : "麦克风打不开（" + (e && e.message || name || "未知原因") + "）。");
+  });
+}
+async function recStartOpenAI(r){
+  r.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  if (r.done) { releaseMic(r); return; }
+  const types = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+  const type = types.find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
+  r.mr = new MediaRecorder(r.stream, type ? { mimeType: type } : undefined);
+  r.chunks = [];
+  r.mr.ondataavailable = e => { if (e.data && e.data.size) r.chunks.push(e.data); };
+  r.mr.start(250);
+  if (r.ctx) {
+    try {
+      const src = r.ctx.createMediaStreamSource(r.stream);
+      r.an = r.ctx.createAnalyser(); r.an.fftSize = 1024; src.connect(r.an);
+      r.buf = new Float32Array(r.an.fftSize);
+    } catch (_) { r.an = null; }
+  }
+  r.t0 = Date.now();
+  meterLoop(r);
+}
+function recStartWeb(r){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const sr = r.sr = new SR();
+  sr.lang = "zh-CN"; sr.interimResults = true; sr.continuous = false; sr.maxAlternatives = 1;
+  r.text = "";
+  sr.onresult = e => {
+    let s = ""; for (const res of e.results) s += res[0].transcript;
+    r.text = s;
+    if (s) { $("listenText").textContent = s; $("listenText").classList.remove("dim"); r.heard = true; r.last = Date.now(); }
+  };
+  sr.onerror = e => { r.err = e.error; };
+  sr.onend = () => {
+    if (r.done || rec !== r) return;
+    if (r.text.trim()) return sendSpoken(r.text.trim());
+    const err = r.err; stopListening(true);
+    toast(err === "not-allowed" || err === "service-not-allowed" ? "系统不让这里用语音识别。在设置里填上 OpenAI key 就能用。" : "没听清，再点一下麦克风试试。");
+  };
+  r.fake = () => r.heard && Date.now() - r.last < 600 ? .05 + Math.random() * .06 : .006;
+  sr.start();
+  meterLoop(r);
+}
+function meterLoop(r){
+  if (r.done || rec !== r) return;
+  const now = Date.now();
+  let lvl = 0, live = false;
+  if (r.an && r.ctx && r.ctx.state === "running") {
+    r.an.getFloatTimeDomainData(r.buf);
+    let s = 0; for (let i = 0; i < r.buf.length; i++) s += r.buf[i] * r.buf[i];
+    lvl = Math.sqrt(s / r.buf.length); live = true;
+  } else lvl = r.fake ? r.fake() : .01 + Math.random() * .01;
+  drawWave(lvl);
+  if (r.eng === "openai" && live) {
+    if (now - r.t0 < 350) r.floor = Math.max(r.floor, lvl);          // 先听一下环境噪音
+    const th = Math.max(.022, r.floor * 2.2);
+    if (lvl > th) { if (!r.heard) { r.heard = true; $("listenText").textContent = "正在听…"; $("listenText").classList.remove("dim"); } r.last = now; }
+    if (r.heard && now - r.last > 1600) return finishListening();
+    if (!r.heard && now - r.t0 > 10000) { stopListening(true); toast("没听到声音，再点一下麦克风试试。"); return; }
+  }
+  if (now - r.t0 > 60000) return finishListening();
+  r.raf = requestAnimationFrame(() => meterLoop(r));
+}
+async function finishListening(){
+  const r = rec; if (!r || r.done) return;
+  $("listenDone").classList.remove("live");
+  if (r.eng === "web") { try { r.sr.stop(); } catch (_) {} return; }   // 识别结束时 onend 会发送
+  if (!r.mr) { stopListening(true); return; }
+  r.done = true; cancelAnimationFrame(r.raf); drawWave(0);
+  $("listenText").textContent = "正在识别…"; $("listenText").classList.add("dim");
+  const blob = await new Promise(res => {
+    r.mr.onstop = () => res(new Blob(r.chunks, { type: r.mr.mimeType || "audio/mp4" }));
+    try { r.mr.stop(); } catch (_) { res(new Blob(r.chunks, { type: r.mr.mimeType || "audio/mp4" })); }
+  });
+  releaseMic(r);
+  if (rec !== r) return;
+  if (Date.now() - r.t0 < 600 || blob.size < 1200) { stopListening(true); toast("太短了，没录到。"); return; }
+  try {
+    const text = await transcribe(blob);
+    if (rec !== r) return;
+    if (!text || /^[\s。，,.!?！？…]*$/.test(text)) { stopListening(true); toast("没听清，再试一次。"); return; }
+    sendSpoken(text);
+  } catch (e) {
+    if (rec !== r) return;
+    stopListening(true);
+    toast(e.code === 401 ? "OpenAI key 无效，语音输入用不了。" : "语音识别失败（" + (e.message || "网络问题") + "），可以打字问。");
+  }
+}
+async function transcribe(blob){
+  const key = store.get("wg_kO");
+  const ext = /mp4|m4a|aac/.test(blob.type) ? "m4a" : /ogg/.test(blob.type) ? "ogg" : /wav/.test(blob.type) ? "wav" : "webm";
+  const once = async model => {
+    const fd = new FormData();
+    fd.append("file", blob, "question." + ext);
+    fd.append("model", model);
+    fd.append("prompt", "游客在用中文问导游问题，可能夹带英文地名和人名，比如 Milwaukee、Detroit、Chicago、Lake Michigan。用简体中文输出，英文专名保留英文。");
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: fd });
+    if (!res.ok) { const e = new Error("stt " + res.status); e.code = res.status; throw e; }
+    return ((await res.json()).text || "").trim();
+  };
+  try { return await once("gpt-4o-mini-transcribe"); }
+  catch (e) { if (e.code === 400 || e.code === 404) return await once("whisper-1"); throw e; }
+}
+function releaseMic(r){
+  if (!r) return;
+  cancelAnimationFrame(r.raf);
+  try { r.stream && r.stream.getTracks().forEach(t => t.stop()); } catch (_) {}   // 一定要关掉，不然 iOS 播放声音会变小
+  try { r.ctx && r.ctx.state !== "closed" && r.ctx.close(); } catch (_) {}
+  r.stream = null; r.ctx = null; r.an = null;
+}
+function stopListening(resume){
+  const r = rec; if (!r) return;
+  r.done = true; rec = null;
+  if (r.sr) { try { r.sr.abort(); } catch (_) {} }
+  if (r.mr && r.mr.state !== "inactive") { try { r.mr.stop(); } catch (_) {} }
+  releaseMic(r); setListenUI(false);
+  if (resume && r.wasPlaying) resumeSpeech();
+}
+function sendSpoken(text){
+  const r = rec;
+  if (r) { r.done = true; releaseMic(r); }
+  rec = null; setListenUI(false);
+  $("question").value = text; syncComposer();
+  const started = ask();
+  if (!started) { if (r && r.wasPlaying) resumeSpeech(); }
+}
+$("micBtn").onclick = startListening;
+$("listenDone").onclick = finishListening;
+$("listenCancel").onclick = () => stopListening(true);
+syncComposer();
 </script>
 </body>
 </html>
